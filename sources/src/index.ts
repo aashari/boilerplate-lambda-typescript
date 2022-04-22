@@ -54,6 +54,8 @@ async function startLambda(event: any, context: any, callback: any) {
         console.info(`lambda function duration: ${new Date().getTime() - start} ms`);
         console.info(`lambda function left time: ${context.getRemainingTimeInMillis()} ms`);
         console.info(`---------------------------------------------`);
+
+        // remove below sections if you don't want to send the metrics to datadog
         DatadogLibrary.queueMetric(`lambda.execution-count`, 1, "count", [`function_name:${functionName}`]);
         DatadogLibrary.queueMetric(`lambda.execution-duration`, new Date().getTime() - start, "gauge", [`function_name:${functionName}`]);
     });
