@@ -21,6 +21,15 @@ locals {
     "dd-app-key", // this will be loaded into the lambda function environment as DD_APP_KEY
   ]
 
+  # this will create a dynamodb table and parameter store to store the table name
+  # the parameterstore will be loaded into the lambda function environment as DYNAMO_DB_TABLE_${each.name}
+  dynamodb_table_list = [
+    {
+      name : "test",
+      key : "id",
+    }
+  ]
+
   # this is will generate the list of function name based on files residing in the functions directory
   # this is also parse the name of the function and generate the function name
   functions = toset([
@@ -93,7 +102,7 @@ resource "aws_lambda_layer_version" "layer" {
 }
 
 # provision the lambda function
-module "functions" {
+module "function" {
 
   depends_on = [
     null_resource.source-code-builder,
@@ -129,7 +138,7 @@ module "functions" {
 }
 
 # provision the parameter store
-resource "aws_ssm_parameter" "parameters" {
+resource "aws_ssm_parameter" "parameter" {
   for_each = toset(local.parameter_store_list)
   name     = "/${local.parameter_store_path}/${each.value}"
   type     = "SecureString"
@@ -141,7 +150,35 @@ resource "aws_ssm_parameter" "parameters" {
   }
 }
 
+# provision the dynamodb table
+module "naming-dynamodb-table" {
+  for_each      = { for table in local.dynamodb_table_list : table.name => table }
+  source        = "git@github.com:traveloka/terraform-aws-resource-naming.git?ref=v0.22.0"
+  name_prefix   = "${local.service_name}-${each.value.name}"
+  resource_type = "dynamodb_table"
+}
+
+resource "aws_dynamodb_table" "table" {
+  for_each     = { for table in local.dynamodb_table_list : table.name => table }
+  name         = module.naming-dynamodb-table[each.value.name].name
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = each.value.key
+  attribute {
+    name = each.value.key
+    type = "S"
+  }
+}
+
+resource "aws_ssm_parameter" "dynamodb-parameter" {
+  for_each = { for table in local.dynamodb_table_list : table.name => table }
+  name     = "/${local.parameter_store_path}/dynamodb-table-${each.value.name}"
+  type     = "SecureString"
+  value    = module.naming-dynamodb-table[each.value.name].name
+}
+
+# update lambda function policy
 data "aws_iam_policy_document" "function-policy" {
+
   statement {
     sid = "AllowParameterStoreRead"
     actions = [
@@ -152,11 +189,25 @@ data "aws_iam_policy_document" "function-policy" {
       "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.id}:parameter/${local.parameter_store_path}/*",
     ]
   }
+
+  statement {
+    sid = "AllowDynamoDBAccess"
+    actions = [
+      "dynamodb:Get*",
+      "dynamodb:Put*",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "dynamodb:BatchWriteItem",
+    ]
+    effect    = "Allow"
+    resources = [for table in local.dynamodb_table_list : "arn:aws:dynamodb:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:table/${module.naming-dynamodb-table[table.name].name}"]
+  }
+
 }
 
 # provision the permission for the lambda function
-resource "aws_iam_role_policy" "functions-policy" {
-  for_each = module.functions
+resource "aws_iam_role_policy" "function-policy" {
+  for_each = module.function
   name     = "function-policy"
   role     = each.value.role_name
   policy   = data.aws_iam_policy_document.function-policy.json
