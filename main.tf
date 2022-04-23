@@ -146,6 +146,22 @@ resource "aws_dynamodb_table" "table" {
   }
 }
 
+resource "null_resource" "models-builder" {
+  for_each = { for table in local.dynamodb_table_list : table.name => table }
+  provisioner "local-exec" {
+    working_dir = "${path.module}/sources"
+    command     = <<EOT
+      mkdir -p src/models
+      echo 'export interface ${join("", [for name_component in split("-", each.value.name) : "${upper(substr(name_component, 0, 1))}${substr(name_component, 1, length(name_component))}"])}Model {' > src/models/${each.value.name}.model.ts
+      echo '  ${each.value.key}: string;' >> src/models/${each.value.name}.model.ts
+      echo '}' >> src/models/${each.value.name}.model.ts
+    EOT
+  }
+  triggers = {
+    model-exists = fileexists("${path.module}/sources/src/models/${each.value.name}.model.ts")
+  }
+}
+
 resource "aws_ssm_parameter" "dynamodb-parameter" {
   for_each = { for table in local.dynamodb_table_list : table.name => table }
   name     = "/${local.parameter_store_path}/dynamodb-table-${each.value.name}"

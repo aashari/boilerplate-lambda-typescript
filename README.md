@@ -10,6 +10,7 @@ This is a boilerplate to help you initiate AWS Lambda project using Typescript, 
 - Typescript source code in the `sources` directory
 - Automatically load AWS Secrets Manager (parameter store) as environment variables
 - Automatically load DynamoDB (table name) as environment variables
+- Automatically create model interfaces for DynamoDB tables
 - Decorator example to log the execution time of the method
 - Datadog example integration to stream the metrics of statistic decorator to Datadog
 
@@ -31,9 +32,10 @@ This is a boilerplate to help you initiate AWS Lambda project using Typescript, 
 │   │   │   └── flight-search.function.ts
 │   │   ├── helpers
 │   │   │   └── parameter-store.helper.ts
-│   │   ├── index.ts
 │   │   └── libraries
-│   │       └── datadog.library.ts
+│   │   │   └── datadog.library.ts
+│   │   ├── models
+│   │   ├── index.ts
 │   └── tsconfig.json
 ├── README.md
 ├── data.tf
@@ -49,6 +51,7 @@ This is a boilerplate to help you initiate AWS Lambda project using Typescript, 
 - `sources/src/libraries` is the collection of class helpers such as `DatadogLibrary` which contains all Datadog functionality such as `publishMetrics` and `publishEvents`, or another example `DynamoDBLibrary` which contains `putItem` and `getItem`
 - `sources/src/decorators` is the collection of Typescript decorators, the initial example is `@statistic` decorator which have the functionality to log the execution duration for the method that uses the decorators, the example also include the additional process to stream the statistic metrics into Datadog
 - `sources/src/index.ts` is a bootstraper file which contains default `exports.handlers` function, which is the default function that will be called by AWS Lambda Function, this file contains logic to create the `sources/src/functions/*.function.ts` instance and create object then call the `handler` method
+- `sources/src/models` is the collection of Typescript models, the initial example is `Booking` which is the model for DynamoDB table `booking` which automatically created by terraform code
 
 ### Configuration
 
@@ -111,6 +114,9 @@ By above configuration, the boilerplate will automatically creates:
 - DynamoDB (table name):
     - `booking`
     - `flight`
+- Typescript models:
+    - `sources/src/models/booking.model.ts`
+    - `sources/src/models/flight.model.ts`
 - AWS Lambda Function custom configuration:
     - `booking-create` Lambda Function
         - `lambda_memory_size` => `128`
