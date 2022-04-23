@@ -6,7 +6,7 @@ locals {
   # this is will generate the list of function name based on files residing in the functions directory
   # this is also parse the name of the function and generate the function name
   functions = toset([
-    for file in fileset(path.module, "${path.module}/sources/src/functions/*.function.ts") : lower(replace(split(".", split("/", file)[length(split("/", file)) - 1])[0], "[^a-zA-Z0-9]", "-"))
+    for file in fileset("${path.module}/sources/src/functions", "*.function.ts") : lower(replace(split(".", split("/", file)[length(split("/", file)) - 1])[0], "[^a-zA-Z0-9]", "-"))
   ])
 
   # temporary path prefix to store the generated files
@@ -245,7 +245,8 @@ resource "aws_cloudwatch_event_target" "scheduler" {
 }
 
 resource "aws_lambda_permission" "scheduler" {
-  for_each       = aws_cloudwatch_event_rule.scheduler
+  depends_on    = [module.function]
+  for_each      = aws_cloudwatch_event_rule.scheduler
   statement_id  = "AllowSchedulerInvoke"
   action        = "lambda:InvokeFunction"
   function_name = module.function[each.key].lambda_name
