@@ -1,5 +1,6 @@
 import { populateEnvironmentVariables } from "./helpers/parameter-store.helper";
 import { DatadogLibrary } from "./libraries/datadog.library";
+import { DynamoDBLibrary } from "./libraries/dynamodb.library";
 
 export interface LambdaFunctionInterface {
     handler: (event: any, context: any, callback: any) => Promise<any>;
@@ -35,6 +36,7 @@ async function startLambda(event: any, context: any, callback: any) {
 
     // load the library instances here
     await DatadogLibrary.instance();
+    await DynamoDBLibrary.instance();
 
     // generate class name based on function name
     let className = functionName.split(`-`).map((x: string) => x.charAt(0).toUpperCase() + x.slice(1)).join(``) + 'Function';

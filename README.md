@@ -10,7 +10,7 @@ This is a boilerplate to help you initiate AWS Lambda project using Typescript, 
 - Typescript source code in the `sources` directory
 - Automatically load AWS Secrets Manager (parameter store) as environment variables
 - Automatically load DynamoDB (table name) as environment variables
-- Automatically create model interfaces for DynamoDB tables
+- Automatically create model for DynamoDB tables
 - Decorator example to log the execution time of the method
 - Datadog example integration to stream the metrics of statistic decorator to Datadog
 

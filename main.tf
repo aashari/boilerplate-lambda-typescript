@@ -25,6 +25,9 @@ data "archive_file" "source-code" {
 # if the hash of the source code directory is different from the previous hash, 
 # then we sould trigger the build process
 resource "null_resource" "source-code-builder" {
+  depends_on = [
+    null_resource.models-builder,
+  ]
   provisioner "local-exec" {
     working_dir = "${path.module}/sources"
     command     = "npm run build"
@@ -152,13 +155,19 @@ resource "null_resource" "models-builder" {
     working_dir = "${path.module}/sources"
     command     = <<EOT
       mkdir -p src/models
-      echo 'export interface ${join("", [for name_component in split("-", each.value.name) : "${upper(substr(name_component, 0, 1))}${substr(name_component, 1, length(name_component))}"])}Model {' > src/models/${each.value.name}.model.ts
-      echo '  ${each.value.key}: string;' >> src/models/${each.value.name}.model.ts
-      echo '}' >> src/models/${each.value.name}.model.ts
+      if [ ! -f src/models${each.value.name}.model.ts ]; then
+        echo "import { Model } from './model';" > src/models/${each.value.name}.model.ts
+        echo "" >> src/models/${each.value.name}.model.ts
+        echo "export class ${join("", [for name_component in split("-", each.value.name) : "${upper(substr(name_component, 0, 1))}${substr(name_component, 1, length(name_component))}"])}Model extends Model {" >> src/models/${each.value.name}.model.ts
+        echo "  public id: string;" >> src/models/${each.value.name}.model.ts
+        echo "  public created_at: number;" >> src/models/${each.value.name}.model.ts
+        echo "  public updated_at: number;" >> src/models/${each.value.name}.model.ts
+        echo "}" >> src/models/${each.value.name}.model.ts
+      fi
     EOT
   }
   triggers = {
-    model-exists = fileexists("${path.module}/sources/src/models/${each.value.name}.model.ts")
+    timestamp = timestamp()
   }
 }
 
