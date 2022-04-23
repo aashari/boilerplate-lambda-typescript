@@ -32,10 +32,12 @@ This is a boilerplate to help you initiate AWS Lambda project using Typescript, 
 │   │   │   └── flight-search.function.ts
 │   │   ├── helpers
 │   │   │   └── parameter-store.helper.ts
-│   │   └── libraries
-│   │   │   └── datadog.library.ts
-│   │   ├── models
 │   │   ├── index.ts
+│   │   ├── libraries
+│   │   │   └── datadog.library.ts
+│   │   └── models
+│   │       ├── booking.model.ts
+│   │       └── flight.model.ts
 │   └── tsconfig.json
 ├── README.md
 ├── data.tf
