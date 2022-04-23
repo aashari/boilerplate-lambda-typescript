@@ -1,34 +1,7 @@
 locals {
 
-  # service domain is the level 1 logical stacks grouping
-  service_domain = "tsi"
-
-  # service name is the level 2 logical stacks grouping, this will be used as the prefix for the stack name
-  service_name = "tsiandi"
-
-  # service environment is the environment of the service
-  service_environment = "dev"
-
   # lambda runtime 
   lambda_runtime = "nodejs14.x"
-
-  # parameter store prefix
-  parameter_store_path = "tvlk-secret/${local.service_name}/${local.service_domain}"
-
-  # generate parameter store which will be loaded into the lambda function environment
-  parameter_store_list = [
-    "dd-api-key", // this will be loaded into the lambda function environment as DD_API_KEY
-    "dd-app-key", // this will be loaded into the lambda function environment as DD_APP_KEY
-  ]
-
-  # this will create a dynamodb table and parameter store to store the table name
-  # the parameterstore will be loaded into the lambda function environment as DYNAMO_DB_TABLE_${each.name}
-  dynamodb_table_list = [
-    {
-      name : "test",
-      key : "id",
-    }
-  ]
 
   # this is will generate the list of function name based on files residing in the functions directory
   # this is also parse the name of the function and generate the function name
@@ -57,7 +30,9 @@ resource "null_resource" "source-code-builder" {
     command     = "npm run build"
   }
   triggers = {
-    "source-code-md5" = data.archive_file.source-code.output_md5
+    source-code-md5 = data.archive_file.source-code.output_md5
+    service_domain  = local.service_domain
+    service_name    = local.service_name
   }
 }
 
@@ -74,7 +49,9 @@ resource "null_resource" "dependencies-builder" {
     EOT
   }
   triggers = {
-    "dependencies-md5" = filemd5("${path.module}/sources/package-lock.json")
+    dependencies-md5 = filemd5("${path.module}/sources/package-lock.json")
+    service_domain   = local.service_domain
+    service_name     = local.service_name
   }
 }
 
@@ -121,8 +98,8 @@ module "function" {
   lambda_layer_arns             = [aws_lambda_layer_version.layer.arn]
   lambda_runtime                = local.lambda_runtime
   lambda_handler                = "index.handler"
-  lambda_memory_size            = "512"
-  lambda_timeout                = "60"
+  lambda_memory_size            = try(local.lambda_custom_configuration[each.value].lambda_memory_size, "512")
+  lambda_timeout                = try(local.lambda_custom_configuration[each.value].lambda_timeout, "60")
   lambda_environment_variables = {
     PARAMETER_STORE_PATH = "/${local.parameter_store_path}"
   }

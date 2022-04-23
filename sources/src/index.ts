@@ -1,4 +1,4 @@
-import { ParameterStoreHelper } from "./helpers/parameter-store.helper";
+import { populateEnvironmentVariables } from "./helpers/parameter-store.helper";
 import { DatadogLibrary } from "./libraries/datadog.library";
 
 export interface LambdaFunctionInterface {
@@ -31,7 +31,7 @@ async function startLambda(event: any, context: any, callback: any) {
     process.env.FUNCTION_UNIQUE_CODE = functionUniqueCode;
 
     // load the helpers here
-    await ParameterStoreHelper.populateEnvironmentVariables();
+    await populateEnvironmentVariables();
 
     // load the library instances here
     await DatadogLibrary.instance();

@@ -1,11 +1,11 @@
 import { LambdaFunction } from "..";
 import { statistic } from "../decorators/statistic.decorator";
 
-export class MainFunction extends LambdaFunction {
+export class BookingSearchFunction extends LambdaFunction {
 
     @statistic(true)
     public async handler(event: any, context: any, callback: any) {
-        console.log('MainFunction.handler()');
+        console.log('BookingSearchFunction.handler()');
         callback(null, {
             statusCode: 200,
             body: JSON.stringify({
