@@ -130,6 +130,13 @@ resource "aws_ssm_parameter" "parameter" {
   }
 }
 
+# provision the parameter store to store the service version
+resource "aws_ssm_parameter" "version" {
+  name  = "/${local.parameter_store_path}/service-version"
+  type  = "String"
+  value = local.service_version
+}
+
 # provision the dynamodb table
 module "naming-dynamodb-table" {
   for_each      = { for table in local.dynamodb_table_list : table.name => table }

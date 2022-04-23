@@ -1,5 +1,8 @@
 locals {
 
+  # service version (e.g. v1.0.0)
+  service_version = "v1.0.0"
+
   # service domain is the level 1 logical stacks grouping
   service_domain = "flight"
 

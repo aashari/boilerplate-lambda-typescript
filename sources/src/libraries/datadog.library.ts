@@ -11,6 +11,7 @@ export class DatadogLibrary {
     private metricWaitingHandle: NodeJS.Timeout | undefined;
     private defaultDatadogTags = [
         `service:${process.env.FUNCTION_SERVICE_NAME}`,
+        `version:${process.env.SERVICE_VERSION}`,
         `function_name:${process.env.FUNCTION_NAME}`,
         `function_unique_code:${process.env.FUNCTION_UNIQUE_CODE}`
     ];

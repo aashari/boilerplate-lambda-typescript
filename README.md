@@ -176,15 +176,24 @@ All of the models created extends from `Model` class, which is the base class fo
 
 Here is the example of usage:
 
+#### To retrieve the booking data by id
 ```
-// to retrieve the booking data by id
 BookingModel.get({ id: "123" }).then((booking) => {
   if (booking) {
     console.log(booking);
   }
 });
+```
 
-// to store the booking data
+#### To store the booking data:
+```
+let myBooking = new BookingModel();
+myBooking.id = "123";
+myBooking.save();
+```
+
+#### To store the booking data using static method:
+```
 let myBooking = new BookingModel();
 myBooking.id = "123";
 BookingModel.put(myBooking).then((success) => {
