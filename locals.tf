@@ -41,7 +41,8 @@ locals {
   lambda_custom_configuration = {
     booking-create : {
       lambda_memory_size : "128",
-      lambda_timeout : "60"
+      lambda_timeout : "60",
+      schedule_expression : "rate(1 minute)", // this will trigger the lambda function every minute
     }
   }
 

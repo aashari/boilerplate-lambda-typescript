@@ -14,6 +14,7 @@ This is a boilerplate to help you initiate AWS Lambda project using Typescript, 
 - Decorator example to log the execution time of the method
 - Datadog example integration to stream the metrics of statistic decorator to Datadog
 - Lambda layer to store the dependencies of the project
+- Lambda scheduler to schedule the function invocation
 
 ### Project Structures
 
@@ -60,17 +61,32 @@ This is a boilerplate to help you initiate AWS Lambda project using Typescript, 
 
 There is file locals.tf contains the configuration for the project, here is the detailed configuration information:
 
-| name                        | description                                                               | example                                                                            |
-| --------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| service_domain              | The 1st level of logical grouping for the service                         | `flight`                                                                           |
-| service_name                | The 2nd level of logical grouping for the service                         | `booking`                                                                          |
-| service_environment         | The 3rd level of logical grouping for the service                         | `dev`                                                                              |
-| parameter_store_path        | The path/prefix of the parameter store                                    | `/services/flight/booking/dev/`                                                    |
-| parameter_store_list        | The list of parameters that will be retrieved from the parameter store    | `[ "datadog-api-key", "datadog-app-key", "sentry-dsn", "sentry-environment", ]`    |
-| dynamodb_table_list         | The list of dynamodb tables that will be used by the Lambda Function      | `[ { "name": "booking", "key": "id", }, { "name": "flight", "key": "id", }, ]`     |
-| lambda_custom_configuration | The list of custom configuration that will be used by the Lambda Function | `{ "booking-create": { "lambda_memory_size": "1024", "lambda_timeout": "300", } }` |
+| name                        | description                                                                          | example                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| service_domain              | The 1st level of logical grouping for the service                                    | `flight`                                                                           |
+| service_name                | The 2nd level of logical grouping for the service                                    | `booking`                                                                          |
+| service_environment         | The 3rd level of logical grouping for the service                                    | `dev`                                                                              |
+| parameter_store_path        | The path/prefix of the parameter store                                               | `/services/flight/booking/dev/`                                                    |
+| parameter_store_list        | The list of parameters that will be retrieved from the parameter store               | `[ "datadog-api-key", "datadog-app-key", "sentry-dsn", "sentry-environment", ]`    |
+| dynamodb_table_list         | The list of `DynamoDB Configuration` tables that will be used by the Lambda Function | `[ { "name": "booking", "key": "id", }, { "name": "flight", "key": "id", }, ]`     |
+| lambda_custom_configuration | The list of `Lambda Configuration` that will be used by the Lambda Function          | `{ "booking-create": { "lambda_memory_size": "1024", "lambda_timeout": "300", } }` |
 
-Configuration example for the `locals.tf` file:
+### DynamoDB Configuration
+
+| name | description                           | example   |
+| ---- | ------------------------------------- | --------- |
+| name | The name of the DynamoDB table        | `booking` |
+| key  | The primary key of the DynamoDB table | `id`      |
+
+### Lambda Configuration
+
+| name                | description                                    | example       |
+| ------------------- | ---------------------------------------------- | ------------- |
+| lambda_memory_size  | The memory size of the Lambda Function         | `1024`        |
+| lambda_timeout      | The timeout of the Lambda Function             | `300`         |
+| schedule_expression | The schedule expression of the Lambda Function | `rate(1 day)` |
+
+## Example Configuration
 
 ```
 locals {
@@ -100,6 +116,7 @@ locals {
     booking-create : {
       lambda_memory_size : "128",
       lambda_timeout : "60"
+      schedule_expression : "rate(1 minute)"
     }
   }
 
@@ -108,30 +125,21 @@ locals {
 
 By above configuration, the boilerplate will automatically creates:
 
-- AWS Lambda Function based on `sources/src/functions/*.function.ts`
-  - `sources/src/functions/booking-create.function.ts` => `booking-create` Lambda Function
-  - `sources/src/functions/booking-search.function.ts` => `booking-search` Lambda Function
-  - `sources/src/functions/flight-search.function.ts` => `flight-search` Lambda Function
-- AWS Secrets Manager (parameter store):
-  - `/services/flight/booking/dev/dd-api-key`
-  - `/services/flight/booking/dev/dd-app-key`
-- DynamoDB (table name):
-  - `booking`
-  - `flight`
-- Typescript models:
-  - `sources/src/models/booking.model.ts`
-  - `sources/src/models/flight.model.ts`
-- AWS Lambda Function custom configuration:
-  - `booking-create` Lambda Function
-    - `lambda_memory_size` => `128`
-    - `lambda_timeout` => `60`
+| resource type   | resource name                           | environment variable name |
+| --------------- | --------------------------------------- | ------------------------- |
+| Lambda Function | booking-create                          |                           |
+| Lambda Function | booking-search                          |                           |
+| Lambda Function | flight-search                           |                           |
+| DynamoDB Table  | booking                                 | DYNAMODB_TABLE_BOOKING    |
+| DynamoDB Table  | flight                                  | DYNAMODB_TABLE_FLIGHT     |
+| Parameter Store | /services/flight/booking/dev/dd-api-key | DD_API_KEY                |
+| Parameter Store | /services/flight/booking/dev/dd-app-key | DD_APP_KEY                |
 
-For the above configuration, the boilerplate will automatically populate theese environment variables:
+For Lambda Custom Configuration:
 
-- `DD_API_KEY`
-- `DD_APP_KEY`
-- `DYNAMODB_TABLE_BOOKING`
-- `DYNAMODB_TABLE_FLIGHT`
+| lambda resource name | memory size | timeout | schedule expression |
+| -------------------- | ----------- | ------- | ------------------- |
+| booking-create       | 128         | 60      | rate(1 minute)      |
 
 ## Typescript Code
 
@@ -158,34 +166,45 @@ By default, the boilerplate will automatically created models based on DynamoDB 
 ```
 export class BookingModel extends Model {
   public id: string;
-  public created_at: number;
-  public updated_at: number;
 }
 
 export class FlightModel extends Model {
   public id: string;
-  public created_at: number;
-  public updated_at: number;
 }
 ```
 
-All of the models created extends from `Model` class, which is the base class for all models, and the `Model` class contains the following methods:
+You can freely add your own attribute/methods on your auto generated models (it won't be overridden by the boilerplate), for example:
 
-- `get(key: { [key: string]: string }): Promise<Model|null>`
-- `put(data: Model): Promise<boolean>`
+```
+export class BookingModel extends Model {
+  public id: string;
+  // your custom attribute here
+  public name: string;
+  public flight_id: string;
+}
+```
+
+All of aboves models derived from `Model` class, which contains the following methods and attributes:
+
+| type          | name       | data type | description                         |
+| ------------- | ---------- | --------- | ----------------------------------- |
+| attribute     | created_at | number    | The timestamp of the record created |
+| attribute     | updated_at | number    | The timestamp of the record updated |
+| method        | save       | boolean   | Save the record to DynamoDB table   |
+| static method | get        | Model     | Get the record from DynamoDB table  |
+| static method | put        | boolean   | Put the record to DynamoDB table    |
 
 Here is the example of usage:
 
 #### To retrieve the booking data by id
+
 ```
-BookingModel.get({ id: "123" }).then((booking) => {
-  if (booking) {
-    console.log(booking);
-  }
-});
+let myBooking = BookingModel.get({ id: "123" });
+console.log(myBooking);
 ```
 
 #### To store the booking data:
+
 ```
 let myBooking = new BookingModel();
 myBooking.id = "123";
@@ -193,21 +212,20 @@ myBooking.save();
 ```
 
 #### To store the booking data using static method:
+
 ```
 let myBooking = new BookingModel();
 myBooking.id = "123";
-BookingModel.put(myBooking).then((success) => {
-  if (success) {
-    console.log("success");
-  }
-});
+await BookingModel.put(myBooking);
 ```
 
 ## Minimum Requirements
+
 - [nodenv 1.4.0](https://github.com/nodenv/nodenv)
 - [tfenv 2.2.3](https://github.com/tfutils/tfenv)
 
 ## How to run
+
 ```
 terraform init
 terraform apply

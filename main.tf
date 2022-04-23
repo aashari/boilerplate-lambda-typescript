@@ -221,3 +221,33 @@ resource "aws_iam_role_policy" "function-policy" {
   role     = each.value.role_name
   policy   = data.aws_iam_policy_document.function-policy.json
 }
+
+# provision the scheduled event for the lambda function
+resource "aws_cloudwatch_event_rule" "scheduler" {
+  for_each = {
+    for name, configuration in local.lambda_custom_configuration : name => configuration
+    if configuration.schedule_expression != ""
+  }
+  description         = "Lambda trigger scheduler for ${each.key}"
+  event_bus_name      = "default"
+  is_enabled          = true
+  name                = "scheduler-${each.key}"
+  schedule_expression = each.value.schedule_expression
+}
+
+resource "aws_cloudwatch_event_target" "scheduler" {
+  for_each       = aws_cloudwatch_event_rule.scheduler
+  arn            = module.function[each.key].lambda_arn
+  event_bus_name = "default"
+  rule           = aws_cloudwatch_event_rule.scheduler[each.key].name
+  target_id      = "scheduler-${each.key}"
+}
+
+resource "aws_lambda_permission" "scheduler" {
+  for_each       = aws_cloudwatch_event_rule.scheduler
+  statement_id  = "AllowSchedulerInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = module.function[each.key].lambda_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.scheduler[each.key].arn
+}
