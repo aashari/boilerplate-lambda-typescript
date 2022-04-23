@@ -31,12 +31,16 @@ async function startLambda(event: any, context: any, callback: any) {
     process.env.FUNCTION_NAME = functionName;
     process.env.FUNCTION_UNIQUE_CODE = functionUniqueCode;
 
+    // --------------------------------------------------
     // load the helpers here
+    // --------------------------------------------------
     await populateEnvironmentVariables();
 
+    // --------------------------------------------------
     // load the library instances here
-    await DatadogLibrary.instance();
+    // --------------------------------------------------
     await DynamoDBLibrary.instance();
+    // await DatadogLibrary.instance(); <-- un comment this line to enable datadog library
 
     // generate class name based on function name
     let className = functionName.split(`-`).map((x: string) => x.charAt(0).toUpperCase() + x.slice(1)).join(``) + 'Function';
@@ -57,9 +61,9 @@ async function startLambda(event: any, context: any, callback: any) {
         console.info(`lambda function left time: ${context.getRemainingTimeInMillis()} ms`);
         console.info(`---------------------------------------------`);
 
-        // remove below sections if you don't want to send the metrics to datadog
-        DatadogLibrary.queueMetric(`lambda.execution-count`, 1, "count", [`function_name:${functionName}`]);
-        DatadogLibrary.queueMetric(`lambda.execution-duration`, new Date().getTime() - start, "gauge", [`function_name:${functionName}`]);
+        // un comment this line to send the metric to datadog
+        // DatadogLibrary.queueMetric(`lambda.execution-count`, 1, "count", [`function_name:${functionName}`]);
+        // DatadogLibrary.queueMetric(`lambda.execution-duration`, new Date().getTime() - start, "gauge", [`function_name:${functionName}`]);
     });
 }
 

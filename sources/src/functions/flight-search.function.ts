@@ -3,7 +3,7 @@ import { statistic } from "../decorators/statistic.decorator";
 
 export class FlightSearchFunction extends LambdaFunction {
 
-    @statistic(true)
+    @statistic()
     public async handler(event: any, context: any, callback: any) {
         console.log('FlightSearchFunction.handler()');
         callback(null, {

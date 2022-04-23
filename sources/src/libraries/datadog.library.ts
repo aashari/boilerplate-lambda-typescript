@@ -34,7 +34,7 @@ export class DatadogLibrary {
         // check whether DD_API_KEY and DD_APP_KEY are set
         // if not set please make sure in the main.tf add dd-api-key and dd-app-key in the parameter_store_list
         // and make sure change the value in the web console or api console to the value in parameter_store
-        if (!process.env.DD_APP_KEY || !process.env.DD_APP_KEY) {
+        if (!process.env.DD_APP_KEY || !process.env.DD_APP_KEY || process.env.DD_APP_KEY == 'placeholder' || process.env.DD_APP_KEY == 'placeholder') {
             return;
         }
 

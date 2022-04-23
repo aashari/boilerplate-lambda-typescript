@@ -1,4 +1,4 @@
-import { DynamoDBClient, WriteRequest } from '@aws-sdk/client-dynamodb';
+import { DescribeTableCommand, DynamoDBClient, ScanCommandInput, WriteRequest } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { Model } from '../models/model';
 
@@ -11,16 +11,23 @@ interface BATCH_COMMAND {
 
 export class DynamoDBLibrary {
 
-    private client: DynamoDBDocument;
+    private dynamoDBClient: DynamoDBClient;
+    private documentClinet: DynamoDBDocument;
+    private dynamodbTableKey: { [tableName: string]: string[] } = {};
+
     private static dynamoDBLibrary: DynamoDBLibrary;
 
     private putCommandList: BATCH_COMMAND = {};
     private putCommandWaitingHandle: NodeJS.Timeout | undefined;
 
+    private deleteCommandList: BATCH_COMMAND = {};
+    private deleteCommandWaitingHandle: NodeJS.Timeout | undefined;
+
     constructor() { }
 
     public async initiateDatadogConfiguration() {
-        this.client = DynamoDBDocument.from(new DynamoDBClient({ region: process.env.AWS_REGION ?? 'ap-southeast-1' }));
+        this.dynamoDBClient = new DynamoDBClient({ region: process.env.AWS_REGION ?? 'ap-southeast-1' });
+        this.documentClinet = DynamoDBDocument.from(this.dynamoDBClient);
     }
 
     public static async instance(): Promise<DynamoDBLibrary> {
@@ -29,18 +36,29 @@ export class DynamoDBLibrary {
         return DynamoDBLibrary.dynamoDBLibrary;
     }
 
+    private static async getTableKey(tableName: string) {
+        if (this.dynamoDBLibrary.dynamodbTableKey[tableName]) return this.dynamoDBLibrary.dynamodbTableKey[tableName];
+        let tableKey: string[] = [];
+        let tableDescription = await this.dynamoDBLibrary.dynamoDBClient.send(new DescribeTableCommand({ TableName: tableName }));
+        tableDescription.Table?.KeySchema?.forEach((key) => {
+            if (key.AttributeName) tableKey.push(key.AttributeName);
+        });
+        this.dynamoDBLibrary.dynamodbTableKey[tableName] = tableKey;
+        return tableKey;
+    }
+
     public static async get(tableName: string, key: { [key: string]: string }): Promise<Model | null> {
 
         // check whether the data still in queue
         if (this.dynamoDBLibrary.putCommandList[tableName]) {
-            let currentPutList: BATCH_COMMAND[string] = JSON.parse(JSON.stringify(this.dynamoDBLibrary.putCommandList[tableName]));
+            let currentPutList: BATCH_COMMAND[string] = this.dynamoDBLibrary.putCommandList[tableName];
             for (let keyName in key) {
                 currentPutList = currentPutList.filter((item) => item.PutRequest.Item[keyName] === key[keyName]);
             }
             if (currentPutList.length > 0) return currentPutList[0].PutRequest.Item;
         }
 
-        return this.dynamoDBLibrary.client.get({
+        return this.dynamoDBLibrary.documentClinet.get({
             TableName: tableName, Key: key,
         }).then((result) => {
             return result.Item ? result.Item as any : null;
@@ -50,7 +68,18 @@ export class DynamoDBLibrary {
         });
     }
 
-    public static async put(tableName: string, data: Model) {
+    public static async put(tableName: string, data: Model, isQueue: boolean = true): Promise<boolean> {
+
+        if (!isQueue) {
+            return this.dynamoDBLibrary.documentClinet.put({
+                TableName: tableName, Item: data,
+            }).then((result) => {
+                return result.$metadata.httpStatusCode === 200 ? true : false;
+            }).catch(err => {
+                console.error(`[dynamodblibrary][put] Error: ${err}`);
+                return false;
+            });
+        }
 
         // generate queue for put command
         if (!this.dynamoDBLibrary.putCommandList[tableName]) this.dynamoDBLibrary.putCommandList[tableName] = [];
@@ -61,36 +90,142 @@ export class DynamoDBLibrary {
             clearTimeout(this.dynamoDBLibrary.putCommandWaitingHandle);
         }
 
-        // if there's no metrics queued for 1 second, publish them
+        // if there's no metrics queued for 300ms, publish them
         this.dynamoDBLibrary.putCommandWaitingHandle = setTimeout(() => {
             if (!tableName) return;
             let currentPutList: BATCH_COMMAND[string] = JSON.parse(JSON.stringify(this.dynamoDBLibrary.putCommandList[tableName]));
             this.dynamoDBLibrary.putCommandList[tableName] = [];
-            this.batchPutMonitor(tableName, currentPutList);
-        }, 1000);
+            this.batchPutQueueByTable(tableName, currentPutList);
+        }, 300);
 
         // successfully queued write command
         return true;
 
     }
 
-    private static async batchPutMonitor(tableName: string, currentPutList: BATCH_COMMAND[string]) {
+    public static async delete(tableName: string, data: Model | { [key: string]: string }, isQueue: boolean = true): Promise<boolean> {
 
-        let tempCurrentPutList = JSON.parse(JSON.stringify(currentPutList));
-        currentPutList = tempCurrentPutList.reduce((acc, cur) => {
-            if (!acc.find((item: any) => item.PutRequest.Item.id === cur.PutRequest.Item.id)) acc.push(cur);
-            return acc;
-        }, []);
+        let tableKey = await this.getTableKey(tableName);
+        let key = {};
 
-        console.info(`[dynamodblibrary][batchPutMonitor] Publishing ${currentPutList.length} ${tableName}`);
-        return this.dynamoDBLibrary.client.batchWrite({
-            RequestItems: { [tableName]: currentPutList },
+        tableKey.forEach((keyName) => {
+            key[keyName] = data[keyName];
+        });
+
+        if (!isQueue) {
+            return this.dynamoDBLibrary.documentClinet.delete({
+                TableName: tableName, Key: key,
+            }).then((result) => {
+                return result.$metadata.httpStatusCode === 200 ? true : false;
+            }).catch(err => {
+                console.error(`[dynamodblibrary][delete] Error: ${err}`);
+                return false;
+            });
+        }
+
+        // generate queue for delete command
+        if (!this.dynamoDBLibrary.deleteCommandList[tableName]) this.dynamoDBLibrary.deleteCommandList[tableName] = [];
+        this.dynamoDBLibrary.deleteCommandList[tableName].push({ DeleteRequest: { Key: key } });
+
+        // if there's existing waiting to publish, cancel it
+        if (this.dynamoDBLibrary.deleteCommandWaitingHandle) {
+            clearTimeout(this.dynamoDBLibrary.deleteCommandWaitingHandle);
+        }
+
+        // if there's no metrics queued for 300ms, publish them
+        this.dynamoDBLibrary.deleteCommandWaitingHandle = setTimeout(() => {
+            if (!tableName) return;
+            let currentDeleteList: BATCH_COMMAND[string] = JSON.parse(JSON.stringify(this.dynamoDBLibrary.deleteCommandList[tableName]));
+            this.dynamoDBLibrary.deleteCommandList[tableName] = [];
+            this.batchDeleteQueueByTable(tableName, currentDeleteList);
+        }, 300);
+
+        // successfully queued write command
+        return true;
+
+    }
+
+    public static async scan(tableName: string, filter: { [key: string]: string } | undefined = undefined, operand: string = 'AND'): Promise<Model[]> {
+        let resultData: Model[] = [];
+        let lastEvaluatedKey: { [key: string]: string } | undefined;
+        while (true) {
+            let params: ScanCommandInput = {
+                TableName: tableName
+            }
+            if (filter) {
+                params.FilterExpression = Object.keys(filter).map((key) => `#${key} = :${key}`).join(` ${operand} `);
+                params.ExpressionAttributeValues = Object.keys(filter).reduce((acc, cur) => {
+                    acc[`#${cur}`] = cur;
+                    return acc;
+                }, {})
+            }
+            let isSuccess = await this.dynamoDBLibrary.documentClinet.scan(params).then((result) => {
+                lastEvaluatedKey = result.LastEvaluatedKey;
+                resultData = resultData.concat(result.Items as Model[]);
+                return result.$metadata.httpStatusCode === 200 ? true : false;
+            }).catch(err => {
+                console.error(`[dynamodblibrary][scan] Error: ${err}`);
+                return false;
+            });
+            if (!isSuccess) break;
+            if (!lastEvaluatedKey) break;
+        }
+        return resultData;
+    }
+
+    private static async batchPutQueueByTable(tableName: string, currentPutList: BATCH_COMMAND[string]) {
+
+        let tableKey = await this.getTableKey(tableName);
+        let uniquePutList: BATCH_COMMAND[string] = [];
+
+        currentPutList = currentPutList.reverse();
+        currentPutList.forEach((item) => {
+            let isUnique: boolean[] = [];
+            tableKey.forEach((keyName) => {
+                if (uniquePutList.find((uniqueItem) => uniqueItem.PutRequest.Item[keyName] === item.PutRequest.Item[keyName])) isUnique.push(false);
+            });
+            if (isUnique.length === 0) uniquePutList.push(item);
+        });
+
+        console.log(`[dynamodblibrary][batchPutQueueByTable] start to put ${uniquePutList.length} items to ${tableName}`);
+        if (uniquePutList.length === 0) return false;
+
+        return this.dynamoDBLibrary.documentClinet.batchWrite({
+            RequestItems: { [tableName]: uniquePutList },
         }).then((result) => {
             return result.$metadata.httpStatusCode === 200 ? true : false;
         }).catch(err => {
             console.error(`[dynamodblibrary][batchputmonitor] Error: ${err}`);
             return false;
         });
+    }
+
+    private static async batchDeleteQueueByTable(tableName: string, currentDeleteList: BATCH_COMMAND[string]) {
+
+        let tableKey = await this.getTableKey(tableName);
+        let uniqueDeleteList: BATCH_COMMAND[string] = [];
+
+        currentDeleteList = currentDeleteList.reverse();
+        currentDeleteList.forEach((item) => {
+            let isUnique: boolean[] = [];
+            tableKey.forEach((keyName) => {
+                if (uniqueDeleteList.find((uniqueItem) => uniqueItem.DeleteRequest.Key[keyName] === item.DeleteRequest.Key[keyName])) isUnique.push(false);
+            });
+            if (isUnique.length === 0) uniqueDeleteList.push(item);
+        });
+
+        console.log(`[dynamodblibrary][batchDeleteQueueByTable] start to delete ${uniqueDeleteList.length} items from ${tableName}`);
+        if (uniqueDeleteList.length === 0) return false;
+
+        return this.dynamoDBLibrary.documentClinet.batchWrite({
+            RequestItems: { [tableName]: uniqueDeleteList },
+        }).then((result) => {
+            return result.$metadata.httpStatusCode === 200 ? true : false;
+        }).catch(err => {
+            console.error(`[dynamodblibrary][batchdeletemonitor] Error: ${err}`);
+            return false;
+        });
+
     }
 
 }

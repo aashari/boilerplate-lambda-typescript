@@ -167,8 +167,8 @@ resource "null_resource" "models-builder" {
         echo "" >> src/models/${each.value.name}.model.ts
         echo "export class ${join("", [for name_component in split("-", each.value.name) : "${upper(substr(name_component, 0, 1))}${substr(name_component, 1, length(name_component))}"])}Model extends Model {" >> src/models/${each.value.name}.model.ts
         echo "  public id: string;" >> src/models/${each.value.name}.model.ts
-        echo "  public created_at: number;" >> src/models/${each.value.name}.model.ts
-        echo "  public updated_at: number;" >> src/models/${each.value.name}.model.ts
+        echo "  // insert your model properties here" >> src/models/${each.value.name}.model.ts
+        echo "  // e.g. public name: string;" >> src/models/${each.value.name}.model.ts
         echo "}" >> src/models/${each.value.name}.model.ts
       fi
     EOT
@@ -207,6 +207,7 @@ data "aws_iam_policy_document" "function-policy" {
       "dynamodb:Query",
       "dynamodb:Scan",
       "dynamodb:BatchWriteItem",
+      "dynamodb:DescribeTable"
     ]
     effect    = "Allow"
     resources = [for table in local.dynamodb_table_list : "arn:aws:dynamodb:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:table/${module.naming-dynamodb-table[table.name].name}"]

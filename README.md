@@ -10,7 +10,7 @@ This is a boilerplate to help you initiate AWS Lambda project using Typescript, 
 - Typescript source code in the `sources` directory
 - Automatically load AWS Secrets Manager (parameter store) as environment variables
 - Automatically load DynamoDB (table name) as environment variables
-- Automatically create model for DynamoDB tables
+- Automatically create model for DynamoDB tables with read, write, delete, and scan ability
 - Decorator example to log the execution time of the method
 - Datadog example integration to stream the metrics of statistic decorator to Datadog
 - Lambda layer to store the dependencies of the project
@@ -148,7 +148,7 @@ For Lambda Custom Configuration:
 There is an initial example of `@statistic` decorator which have the functionality to log the execution duration for the method that uses the decorators, the example also include the additional process to stream the statistic metrics into Datadog, the example of how to use the decorator is as follows:
 
 ```
-@statistic(true) // true if you want to stream the statistic metrics into Datadog
+@statistic() // true if you want to stream the statistic metrics into Datadog
 public async handler(event: any, context: any, callback: any) {
     callback(null, {
         statusCode: 200,
@@ -186,13 +186,16 @@ export class BookingModel extends Model {
 
 All of aboves models derived from `Model` class, which contains the following methods and attributes:
 
-| type          | name       | data type | description                         |
-| ------------- | ---------- | --------- | ----------------------------------- |
-| attribute     | created_at | number    | The timestamp of the record created |
-| attribute     | updated_at | number    | The timestamp of the record updated |
-| method        | save       | boolean   | Save the record to DynamoDB table   |
-| static method | get        | Model     | Get the record from DynamoDB table  |
-| static method | put        | boolean   | Put the record to DynamoDB table    |
+| type          | name       | data type | description                           |
+| ------------- | ---------- | --------- | ------------------------------------- |
+| attribute     | created_at | number    | The timestamp of the record created   |
+| attribute     | updated_at | number    | The timestamp of the record updated   |
+| method        | save       | boolean   | Save the record to DynamoDB table     |
+| method        | delete     | boolean   | Delete the record from DynamoDB table |
+| static method | get        | Model     | Get the record from DynamoDB table    |
+| static method | put        | boolean   | Put the record to DynamoDB table      |
+| static method | scan       | Model[]   | Scan the records from DynamoDB table  |
+| static method | delete     | boolean   | Delete the record from DynamoDB table |
 
 Here is the example of usage:
 
@@ -203,7 +206,7 @@ let myBooking = BookingModel.get({ id: "123" });
 console.log(myBooking);
 ```
 
-#### To store the booking data:
+#### To store the booking data
 
 ```
 let myBooking = new BookingModel();
@@ -211,12 +214,39 @@ myBooking.id = "123";
 myBooking.save();
 ```
 
-#### To store the booking data using static method:
+#### To store the booking data using static method
 
 ```
 let myBooking = new BookingModel();
 myBooking.id = "123";
 await BookingModel.put(myBooking);
+```
+
+#### To delete the booking data
+
+```
+let myBooking = BookingModel.get({ id: "123" });
+myBooking.delete();
+```
+
+#### To delete the booking data using static method
+
+```
+await BookingModel.delete({ id: "123" });
+```
+
+#### To scan all the booking data
+
+```
+let myBookings = BookingModel.scan();
+console.log(myBookings);
+```
+
+#### To scan the booking data with filter
+
+```
+let myBookings = BookingModel.scan({ flight_id: "123" });
+console.log(myBookings);
 ```
 
 ## Minimum Requirements
