@@ -1,5 +1,6 @@
 import { DescribeTableCommand, DynamoDBClient, ScanCommandInput, WriteRequest } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import { statistic } from '../decorators/statistic.decorator';
 import { Model } from '../models/model';
 
 interface BATCH_COMMAND {
@@ -36,6 +37,7 @@ export class DynamoDBLibrary {
         return DynamoDBLibrary.dynamoDBLibrary;
     }
 
+    @statistic()
     private static async getTableKey(tableName: string) {
         if (this.dynamoDBLibrary.dynamodbTableKey[tableName]) return this.dynamoDBLibrary.dynamodbTableKey[tableName];
         let tableKey: string[] = [];
@@ -47,6 +49,7 @@ export class DynamoDBLibrary {
         return tableKey;
     }
 
+    @statistic()
     public static async get(tableName: string, key: { [key: string]: string }): Promise<Model | null> {
 
         // check whether the data still in queue
@@ -145,6 +148,7 @@ export class DynamoDBLibrary {
 
     }
 
+    @statistic()
     public static async scan(tableName: string, filter: { [key: string]: string } | undefined = undefined, operand: string = 'AND'): Promise<Model[]> {
         let resultData: Model[] = [];
         let lastEvaluatedKey: { [key: string]: string } | undefined;
@@ -173,6 +177,7 @@ export class DynamoDBLibrary {
         return resultData;
     }
 
+    @statistic()
     private static async batchPutQueueByTable(tableName: string, currentPutList: BATCH_COMMAND[string]) {
 
         let tableKey = await this.getTableKey(tableName);
@@ -200,6 +205,7 @@ export class DynamoDBLibrary {
         });
     }
 
+    @statistic()
     private static async batchDeleteQueueByTable(tableName: string, currentDeleteList: BATCH_COMMAND[string]) {
 
         let tableKey = await this.getTableKey(tableName);
