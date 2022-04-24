@@ -65,19 +65,15 @@ export class DatadogLibrary {
     }
 
     private static async publishMetrics(currentSeries: DatadogAPIClient.Series[]) {
-        console.info(`[DatadogLibrary] publishing ${currentSeries.length} metrics`);
         if (currentSeries.length == 0) return false;
         return this.datadogLibraryInstance.datadogMetricsAPI.submitMetrics({
             body: { series: currentSeries }
         }).then((result: any) => {
-            console.info(`[DatadogLibrary] successfully published ${currentSeries.length} metrics`, JSON.stringify({ result, currentSeries }));
+            console.info(`[DatadogLibrary][publishMetrics] successfully published ${currentSeries.length} metrics`);
             return true;
         }).catch((error: any) => {
-            console.error(`[DatadogLibrary] failed to publish metrics:`, error);
+            console.error(`[DatadogLibrary][publishMetrics] failed to publish ${currentSeries.length} metrics with error: ${error}`, error);
             return false;
-        }).finally(() => {
-            console.info(`[DatadogLibrary] finished publishing metrics`);
-            return true;
         });
     }
 

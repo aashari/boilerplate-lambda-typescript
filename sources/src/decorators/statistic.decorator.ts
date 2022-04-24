@@ -7,7 +7,6 @@ export function statistic(isLogToDatadog: boolean = false) {
             const start = new Date().getTime();
             const className = (target.constructor.name != 'Function' ? target.constructor.name : target.name);
             return originalMethod.apply(this, args).then((response: any) => {
-                console.info(`[${className}][${propertyKey}] execution duration: ${new Date().getTime() - start} ms`);
                 if (isLogToDatadog) DatadogLibrary.queueMetric(`statistic.method-execution-duration`, new Date().getTime() - start, `gauge`, [
                     `class_name:${className}`,
                     `method_name:${propertyKey}`,
@@ -15,14 +14,15 @@ export function statistic(isLogToDatadog: boolean = false) {
                 ]);
                 return response;
             }).catch((error: any) => {
-                console.error(`[${className}][${propertyKey}] execution duration: ${new Date().getTime() - start} ms`);
                 if (isLogToDatadog) DatadogLibrary.queueMetric(`statistic.method-execution-duration`, new Date().getTime() - start, `gauge`, [
                     `class_name:${className}`,
                     `method_name:${propertyKey}`,
                     `status:failure`,
                 ]);
                 throw error;
-            });
+            }).finally(() => {
+                console.info(`[Decorator][statistic] ${className}.${propertyKey} executed in ${new Date().getTime() - start}ms`);
+            })
         };
     }
 }

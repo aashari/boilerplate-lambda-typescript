@@ -15,7 +15,7 @@ export async function populateEnvironmentVariables() {
             WithDecryption: true,
             NextToken: nexToken
         })).catch(e => {
-            console.error(`Error getting parameters from SSM Parameter Store`, e);
+            console.error(`[ParameterStoreHelper][populateEnvironmentVariables] failed to get parameters from parameter store`, e);
             return null;
         });
         if (parameterListResponse?.Parameters) {
@@ -36,7 +36,7 @@ export async function populateEnvironmentVariables() {
         let value = parameter.Value;
         if (!value) continue;
         // set the environment variable
-        console.info(`[ParameterStoreHelper] Setting environment variable ${key}`);
+        console.info(`[ParameterStoreHelper][populateEnvironmentVariables] setting environment variable ${key} to ${value}`);
         process.env[key] = value;
     }
 

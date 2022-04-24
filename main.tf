@@ -161,15 +161,15 @@ resource "null_resource" "models-builder" {
   provisioner "local-exec" {
     working_dir = "${path.module}/sources"
     command     = <<EOT
-      mkdir -p src/models
-      if [ ! -f src/models${each.value.name}.model.ts ]; then
-        echo "import { Model } from './model';" > src/models/${each.value.name}.model.ts
-        echo "" >> src/models/${each.value.name}.model.ts
-        echo "export class ${join("", [for name_component in split("-", each.value.name) : "${upper(substr(name_component, 0, 1))}${substr(name_component, 1, length(name_component))}"])}Model extends Model {" >> src/models/${each.value.name}.model.ts
-        echo "  public id: string;" >> src/models/${each.value.name}.model.ts
-        echo "  // insert your model properties here" >> src/models/${each.value.name}.model.ts
-        echo "  // e.g. public name: string;" >> src/models/${each.value.name}.model.ts
-        echo "}" >> src/models/${each.value.name}.model.ts
+      mkdir -p ${path.module}/src/models
+      if [ ! -f ${path.module}/src/models${each.value.name}.model.ts ]; then
+        echo "import { Model } from './model';" > ${path.module}/src/models/${each.value.name}.model.ts
+        echo "" >> ${path.module}/src/models/${each.value.name}.model.ts
+        echo "export class ${join("", [for name_component in split("-", each.value.name) : "${upper(substr(name_component, 0, 1))}${substr(name_component, 1, length(name_component))}"])}Model extends Model {" >> ${path.module}/src/models/${each.value.name}.model.ts
+        echo "  public id: string;" >> ${path.module}/src/models/${each.value.name}.model.ts
+        echo "  // insert your model properties here" >> ${path.module}/src/models/${each.value.name}.model.ts
+        echo "  // e.g. public name: string;" >> ${path.module}/src/models/${each.value.name}.model.ts
+        echo "}" >> ${path.module}/src/models/${each.value.name}.model.ts
       fi
     EOT
   }

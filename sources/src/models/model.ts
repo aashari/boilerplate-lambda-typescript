@@ -9,7 +9,7 @@ export class Model {
         let environmentName = `DYNAMODB_TABLE_${(className ? className : this.name).replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}`;
         let environmentNameComponent = environmentName.split('_'); environmentNameComponent.pop();
         let tableName = process.env[environmentNameComponent.join('_').toUpperCase()];
-        if (!tableName) throw new Error(`[dynamodblibrary][get] Table name not found for ${className ? className : this.name}`);
+        if (!tableName) throw new Error(`[Model][getTableName] table name not found for ${environmentName}`);
         return tableName;
     }
 

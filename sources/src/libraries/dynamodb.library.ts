@@ -63,7 +63,7 @@ export class DynamoDBLibrary {
         }).then((result) => {
             return result.Item ? result.Item as any : null;
         }).catch(err => {
-            console.error(`[dynamodblibrary][get] Error: ${err}`);
+            console.error(`[DynamoDBLibrary][get] failed to get data from table ${tableName} with key ${JSON.stringify(key)}`);
             return null;
         });
     }
@@ -76,7 +76,7 @@ export class DynamoDBLibrary {
             }).then((result) => {
                 return result.$metadata.httpStatusCode === 200 ? true : false;
             }).catch(err => {
-                console.error(`[dynamodblibrary][put] Error: ${err}`);
+                console.error(`[dynamodblibrary][put] failed to put data to table ${tableName} with data ${JSON.stringify(data)}`);
                 return false;
             });
         }
@@ -118,7 +118,7 @@ export class DynamoDBLibrary {
             }).then((result) => {
                 return result.$metadata.httpStatusCode === 200 ? true : false;
             }).catch(err => {
-                console.error(`[dynamodblibrary][delete] Error: ${err}`);
+                console.error(`[dynamodblibrary][delete] failed to delete data from table ${tableName} with data ${JSON.stringify(data)}`);
                 return false;
             });
         }
@@ -164,7 +164,7 @@ export class DynamoDBLibrary {
                 resultData = resultData.concat(result.Items as Model[]);
                 return result.$metadata.httpStatusCode === 200 ? true : false;
             }).catch(err => {
-                console.error(`[dynamodblibrary][scan] Error: ${err}`);
+                console.error(`[dynamodblibrary][scan] failed to scan data from table ${tableName} with filter ${JSON.stringify(filter)}`);
                 return false;
             });
             if (!isSuccess) break;
@@ -187,15 +187,15 @@ export class DynamoDBLibrary {
             if (isUnique.length === 0) uniquePutList.push(item);
         });
 
-        console.log(`[dynamodblibrary][batchPutQueueByTable] start to put ${uniquePutList.length} items to ${tableName}`);
         if (uniquePutList.length === 0) return false;
 
         return this.dynamoDBLibrary.documentClinet.batchWrite({
             RequestItems: { [tableName]: uniquePutList },
         }).then((result) => {
+            console.info(`[dynamodblibrary][batchPutQueueByTable] successfully put ${uniquePutList.length} items to table ${tableName}`);
             return result.$metadata.httpStatusCode === 200 ? true : false;
         }).catch(err => {
-            console.error(`[dynamodblibrary][batchputmonitor] Error: ${err}`);
+            console.error(`[dynamodblibrary][batchPutQueueByTable] failed to batch put data to table ${tableName} with data ${JSON.stringify(currentPutList)}`);
             return false;
         });
     }
@@ -214,15 +214,15 @@ export class DynamoDBLibrary {
             if (isUnique.length === 0) uniqueDeleteList.push(item);
         });
 
-        console.log(`[dynamodblibrary][batchDeleteQueueByTable] start to delete ${uniqueDeleteList.length} items from ${tableName}`);
         if (uniqueDeleteList.length === 0) return false;
 
         return this.dynamoDBLibrary.documentClinet.batchWrite({
             RequestItems: { [tableName]: uniqueDeleteList },
         }).then((result) => {
+            console.info(`[dynamodblibrary][batchDeleteQueueByTable] successfully delete ${uniqueDeleteList.length} data from table ${tableName}`);
             return result.$metadata.httpStatusCode === 200 ? true : false;
         }).catch(err => {
-            console.error(`[dynamodblibrary][batchdeletemonitor] Error: ${err}`);
+            console.error(`[dynamodblibrary][batchDeleteQueueByTable] failed to batch delete data from table ${tableName} with data ${JSON.stringify(currentDeleteList)}`);
             return false;
         });
 
