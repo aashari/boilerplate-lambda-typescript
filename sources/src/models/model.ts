@@ -5,12 +5,30 @@ export class Model {
     public created_at?: number;
     public updated_at?: number;
 
+    constructor(data?: Model) {
+        if (!data) return this;
+        let newDataObject = JSON.parse(JSON.stringify(data));
+        for (let key in newDataObject) this[key] = newDataObject[key];
+        return this;
+    }
+
+
     static getTableName(className: string | undefined = undefined): string {
         let environmentName = `DYNAMODB_TABLE_${(className ? className : this.name).replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}`;
         let environmentNameComponent = environmentName.split('_'); environmentNameComponent.pop();
         let tableName = process.env[environmentNameComponent.join('_').toUpperCase()];
         if (!tableName) throw new Error(`[Model][getTableName] table name not found for ${environmentName}`);
         return tableName;
+    }
+
+    public compareAndSave(newData: Model) {
+        let updatedFields: string[] = []
+        let newDataObject = JSON.parse(JSON.stringify(newData));
+        for (let key in newDataObject) if (JSON.stringify(newDataObject[key]) !== JSON.stringify(this[key])) {
+            this[key] = newDataObject[key];
+            updatedFields.push(key);
+        }
+        return updatedFields;
     }
 
     public async save() {
