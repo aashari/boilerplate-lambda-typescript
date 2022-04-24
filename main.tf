@@ -150,10 +150,21 @@ resource "aws_dynamodb_table" "table" {
   name         = module.naming-dynamodb-table[each.value.name].name
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = each.value.key
+  range_key    = try(each.value.range_key, "") != "" ? each.value.range_key : ""
+
   attribute {
     name = each.value.key
     type = "S"
   }
+
+  dynamic "attribute" {
+    for_each = toset(try(each.value.range_key, "") != "" ? [each.value.range_key] : [])
+    content {
+      name = each.value.range_key
+      type = "S"
+    }
+  }
+
 }
 
 resource "null_resource" "models-builder" {
@@ -162,11 +173,11 @@ resource "null_resource" "models-builder" {
     working_dir = "${path.module}/sources"
     command     = <<EOT
       mkdir -p ${path.module}/src/models
-      if [ ! -f ${path.module}/src/models${each.value.name}.model.ts ]; then
+      if [ ! -f ${path.module}/src/models/${each.value.name}.model.ts ]; then
         echo "import { Model } from './model';" > ${path.module}/src/models/${each.value.name}.model.ts
         echo "" >> ${path.module}/src/models/${each.value.name}.model.ts
         echo "export class ${join("", [for name_component in split("-", each.value.name) : "${upper(substr(name_component, 0, 1))}${substr(name_component, 1, length(name_component))}"])}Model extends Model {" >> ${path.module}/src/models/${each.value.name}.model.ts
-        echo "  public id: string;" >> ${path.module}/src/models/${each.value.name}.model.ts
+        echo "  public ${each.value.key}: string;" >> ${path.module}/src/models/${each.value.name}.model.ts
         echo "  // insert your model properties here" >> ${path.module}/src/models/${each.value.name}.model.ts
         echo "  // e.g. public name: string;" >> ${path.module}/src/models/${each.value.name}.model.ts
         echo "}" >> ${path.module}/src/models/${each.value.name}.model.ts

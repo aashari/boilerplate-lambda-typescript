@@ -73,18 +73,19 @@ There is file locals.tf contains the configuration for the project, here is the 
 
 ### DynamoDB Configuration
 
-| name | description                           | example   |
-| ---- | ------------------------------------- | --------- |
-| name | The name of the DynamoDB table        | `booking` |
-| key  | The primary key of the DynamoDB table | `id`      |
+| name      | description                           | is required | example     |
+| --------- | ------------------------------------- | ----------- | ----------- |
+| name      | The name of the DynamoDB table        | yes         | `booking`   |
+| key       | The primary key of the DynamoDB table | yes         | `id`        |
+| range_key | The range key of the DynamoDB table   | no          | `flight_id` |
 
 ### Lambda Configuration
 
-| name                | description                                    | example       |
-| ------------------- | ---------------------------------------------- | ------------- |
-| lambda_memory_size  | The memory size of the Lambda Function         | `1024`        |
-| lambda_timeout      | The timeout of the Lambda Function             | `300`         |
-| schedule_expression | The schedule expression of the Lambda Function | `rate(1 day)` |
+| name                | description                                    | is required | example       |
+| ------------------- | ---------------------------------------------- | ----------- | ------------- |
+| lambda_memory_size  | The memory size of the Lambda Function         | no          | `1024`        |
+| lambda_timeout      | The timeout of the Lambda Function             | no          | `300`         |
+| schedule_expression | The schedule expression of the Lambda Function | no          | `rate(1 day)` |
 
 ## Example Configuration
 
@@ -109,6 +110,11 @@ locals {
     {
       name : "flight",
       key : "id",
+    },
+    {
+      name : "transaction",
+      key : "booking_id",
+      range_key : "flight_id",
     }
   ]
 
@@ -125,15 +131,16 @@ locals {
 
 By above configuration, the boilerplate will automatically creates:
 
-| resource type   | resource name                           | environment variable name |
-| --------------- | --------------------------------------- | ------------------------- |
-| Lambda Function | booking-create                          |                           |
-| Lambda Function | booking-search                          |                           |
-| Lambda Function | flight-search                           |                           |
-| DynamoDB Table  | booking                                 | DYNAMODB_TABLE_BOOKING    |
-| DynamoDB Table  | flight                                  | DYNAMODB_TABLE_FLIGHT     |
-| Parameter Store | /services/flight/booking/dev/dd-api-key | DD_API_KEY                |
-| Parameter Store | /services/flight/booking/dev/dd-app-key | DD_APP_KEY                |
+| resource type   | resource name                           | environment variable name  |
+| --------------- | --------------------------------------- | -------------------------- |
+| Lambda Function | booking-create                          |                            |
+| Lambda Function | booking-search                          |                            |
+| Lambda Function | flight-search                           |                            |
+| DynamoDB Table  | booking                                 | DYNAMODB_TABLE_BOOKING     |
+| DynamoDB Table  | flight                                  | DYNAMODB_TABLE_FLIGHT      |
+| DynamoDB Table  | transaction                             | DYNAMODB_TABLE_TRANSACTION |
+| Parameter Store | /services/flight/booking/dev/dd-api-key | DD_API_KEY                 |
+| Parameter Store | /services/flight/booking/dev/dd-app-key | DD_APP_KEY                 |
 
 For Lambda Custom Configuration:
 

@@ -7,8 +7,7 @@ export class Model {
 
     constructor(data?: Model) {
         if (!data) return this;
-        let newDataObject = JSON.parse(JSON.stringify(data));
-        for (let key in newDataObject) this[key] = newDataObject[key];
+        for (let key in data) this[key] = data[key];
         return this;
     }
 

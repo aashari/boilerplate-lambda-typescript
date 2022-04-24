@@ -33,6 +33,11 @@ locals {
     {
       name : "flight",
       key : "id",
+    },
+    {
+      name : "transaction",
+      key : "booking_id",
+      range_key : "flight_id",
     }
   ]
 
