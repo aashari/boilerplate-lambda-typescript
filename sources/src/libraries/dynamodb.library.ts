@@ -1,4 +1,4 @@
-import { DescribeTableCommand, DynamoDBClient, ScanCommandInput, WriteRequest } from '@aws-sdk/client-dynamodb';
+import { AttributeValue, DescribeTableCommand, DynamoDBClient, ScanCommandInput, WriteRequest } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { statistic } from '../decorators/statistic.decorator';
 import { Model } from '../models/model';
@@ -71,6 +71,7 @@ export class DynamoDBLibrary {
         });
     }
 
+    @statistic()
     public static async put(tableName: string, data: Model, isQueue: boolean = true): Promise<boolean> {
 
         if (!isQueue) {
@@ -106,6 +107,7 @@ export class DynamoDBLibrary {
 
     }
 
+    @statistic()
     public static async delete(tableName: string, data: Model | { [key: string]: string }, isQueue: boolean = true): Promise<boolean> {
 
         let tableKey = await this.getTableKey(tableName);
@@ -151,10 +153,11 @@ export class DynamoDBLibrary {
     @statistic()
     public static async scan(tableName: string, filter: { [key: string]: string } | undefined = undefined, operand: string = 'AND'): Promise<Model[]> {
         let resultData: Model[] = [];
-        let lastEvaluatedKey: { [key: string]: string } | undefined;
+        let lastEvaluatedKey: { [key: string]: AttributeValue } | undefined;
         while (true) {
             let params: ScanCommandInput = {
-                TableName: tableName
+                TableName: tableName,
+                ExclusiveStartKey: lastEvaluatedKey,
             }
             if (filter) {
                 params.FilterExpression = Object.keys(filter).map((key) => `#${key} = :${key}`).join(` ${operand} `);

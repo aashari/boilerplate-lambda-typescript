@@ -11,7 +11,6 @@ export class Model {
         return this;
     }
 
-
     static getTableName(className: string | undefined = undefined): string {
         let environmentName = `DYNAMODB_TABLE_${(className ? className : this.name).replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}`;
         let environmentNameComponent = environmentName.split('_'); environmentNameComponent.pop();

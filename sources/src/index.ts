@@ -1,5 +1,4 @@
 import { populateEnvironmentVariables } from "./helpers/parameter-store.helper";
-import { DatadogLibrary } from "./libraries/datadog.library";
 import { DynamoDBLibrary } from "./libraries/dynamodb.library";
 
 export interface LambdaFunctionInterface {
@@ -51,8 +50,16 @@ async function startLambda(event: any, context: any, callback: any) {
     // create the object of the class
     let lambdaFunction = new LambdaFunctionClass();
 
+    // errror response object
+    let errorResponse: any | undefined;
+
     // call the handler function of the object
-    return lambdaFunction.handler(event, context, callback).finally(() => {
+    return lambdaFunction.handler(event, context, callback).catch((error: any) => {
+        // catching unhandled promise rejections
+        errorResponse = error;
+        return;
+    }).finally(() => {
+
         console.info(`---------------------------------------------`);
         console.info(`lambda function name: ${functionName}`);
         console.info(`lambda function unique code: ${functionUniqueCode}`);
@@ -62,8 +69,28 @@ async function startLambda(event: any, context: any, callback: any) {
         console.info(`---------------------------------------------`);
 
         // un comment this line to send the metric to datadog
-        // DatadogLibrary.queueMetric(`lambda.execution-count`, 1, "count", [`function_name:${functionName}`]);
-        // DatadogLibrary.queueMetric(`lambda.execution-duration`, new Date().getTime() - start, "gauge", [`function_name:${functionName}`]);
+        // let datadogTags = [
+        //     `function_name:${functionName}`,
+        //     `function_unique_code:${functionUniqueCode}`,
+        //     `function_service_name:${functionServiceName}`,
+        //     `status:${errorResponse ? 'failure' : 'success'}`
+        // ];
+        // // stream the metric to datadog
+        // DatadogLibrary.queueMetric(`lambda.execution-count`, 1, "count", datadogTags);
+        // DatadogLibrary.queueMetric(`lambda.execution-duration`, new Date().getTime() - start, "gauge", datadogTags);
+
+        if (!errorResponse) return;
+        console.error(`lambda function error: ${errorResponse}`, errorResponse);
+        // // un comment this line to send the metric to datadog
+        // DatadogLibrary.queueEvent(`Lambda function error: ${functionName}`, [
+        //     `Function Name: ${functionName}`,
+        //     `Function Unique Code: ${functionUniqueCode}`,
+        //     `Function Service Name: ${functionServiceName}`,
+        //     `Error: ${errorResponse}`,
+        //     `Error Details: ${JSON.stringify(errorResponse)}`
+        // ].join(`\n`), datadogTags);
+        throw errorResponse;
+
     });
 }
 

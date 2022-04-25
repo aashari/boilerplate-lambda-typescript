@@ -14,6 +14,13 @@ locals {
 
 }
 
+# create KMS key for the service
+resource "aws_kms_key" "key" {
+  description         = "${local.service_name}-key"
+  key_usage           = "ENCRYPT_DECRYPT"
+  enable_key_rotation = true
+}
+
 # create the source code archive which will triggered whenever there's file change in the source code directory
 # this is to generate the hash of the source code directory
 data "archive_file" "source-code" {
@@ -152,6 +159,15 @@ resource "aws_dynamodb_table" "table" {
   hash_key     = each.value.key
   range_key    = try(each.value.range_key, "") != "" ? each.value.range_key : ""
 
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.key.arn
+  }
+
   attribute {
     name = each.value.key
     type = "S"
@@ -222,6 +238,18 @@ data "aws_iam_policy_document" "function-policy" {
     ]
     effect    = "Allow"
     resources = [for table in local.dynamodb_table_list : "arn:aws:dynamodb:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:table/${module.naming-dynamodb-table[table.name].name}"]
+  }
+
+  statement {
+    sid = "AllowKMSAccess"
+    actions = [
+      "kms:Decrypt*",
+      "kms:Encrypt*",
+    ]
+    effect = "Allow"
+    resources = [
+      aws_kms_key.key.arn,
+    ]
   }
 
 }

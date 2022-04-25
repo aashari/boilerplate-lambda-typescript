@@ -49,21 +49,25 @@ export function statistic(isLogToDatadog: boolean = false) {
         descriptor.value = function (...args: any[]) {
             const start = new Date().getTime();
             const className = (target.constructor.name != 'Function' ? target.constructor.name : target.name);
+            const datadogTags = [
+                `class_name:${className}`,
+                `method_name:${propertyKey}`,
+            ]
             return originalMethod.apply(this, args).then((response: any) => {
                 if (!isLogToDatadog) return response;
-                DatadogLibrary.queueMetric(`statistic.method-execution-duration`, new Date().getTime() - start, `gauge`, [
-                    `class_name:${className}`,
-                    `method_name:${propertyKey}`,
-                    `status:success`,
-                ]);
+                DatadogLibrary.queueMetric(`statistic.method-execution-duration`, new Date().getTime() - start, `gauge`, [...datadogTags, `status:success`]);
+                DatadogLibrary.queueMetric(`statistic.method-execution-count`, 1, `count`, [...datadogTags, `status:success`]);
                 return response;
             }).catch((error: any) => {
                 if (!isLogToDatadog) throw error;
-                DatadogLibrary.queueMetric(`statistic.method-execution-duration`, new Date().getTime() - start, `gauge`, [
-                    `class_name:${className}`,
-                    `method_name:${propertyKey}`,
-                    `status:failure`,
-                ]);
+                DatadogLibrary.queueMetric(`statistic.method-execution-duration`, new Date().getTime() - start, `gauge`, [...datadogTags, `status:failure`]);
+                DatadogLibrary.queueMetric(`statistic.method-execution-count`, 1, `count`, [...datadogTags, `status:failure`]);
+                DatadogLibrary.queueEvent(`Method execution failure: ${className}.${propertyKey}`, [
+                    `Class name: ${className}`,
+                    `Method name: ${propertyKey}`,
+                    `Error: ${error}`,
+                    `Error Details: ${JSON.stringify(error)}`
+                ].join(`\n`), [...datadogTags, `status:failure`]);
                 throw error;
             }).finally(() => {
                 if (!isLogToDatadog) {
