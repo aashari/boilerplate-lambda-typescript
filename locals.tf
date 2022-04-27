@@ -51,4 +51,14 @@ locals {
     }
   }
 
+  # define the default tags for the resources
+  default_tags = {
+    "Name" : "${local.service_name}-${local.service_environment}",
+    "Environment" : "${local.service_environment}",
+    "Service" : "${local.service_name}",
+    "ServiceName" : "${local.service_name}",
+    "ServiceDomain" : "${local.service_domain}",
+    "ServiceVersion" : "${local.service_version}",
+  }
+
 }

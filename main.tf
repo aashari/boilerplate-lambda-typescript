@@ -19,6 +19,7 @@ resource "aws_kms_key" "key" {
   description         = "${local.service_name}-key"
   key_usage           = "ENCRYPT_DECRYPT"
   enable_key_rotation = true
+  tags                = local.default_tags
 }
 
 # create the source code archive which will triggered whenever there's file change in the source code directory
@@ -110,6 +111,9 @@ module "function" {
   lambda_handler                = "index.handler"
   lambda_memory_size            = try(local.lambda_custom_configuration[each.value].lambda_memory_size, "512")
   lambda_timeout                = try(local.lambda_custom_configuration[each.value].lambda_timeout, "60")
+  log_retention_days            = "7"
+  additional_tags               = local.default_tags
+
   lambda_environment_variables = {
     PARAMETER_STORE_PATH = "/${local.parameter_store_path}"
   }
@@ -120,8 +124,6 @@ module "function" {
   is_local_archive = "true"
   is_lambda_vpc    = "false"
 
-  log_retention_days = "7"
-
 }
 
 # provision the parameter store
@@ -130,6 +132,7 @@ resource "aws_ssm_parameter" "parameter" {
   name     = "/${local.parameter_store_path}/${each.value}"
   type     = "SecureString"
   value    = "placeholder"
+  tags     = local.default_tags
   // the following is to make sure the parameter store is not overwritten by the default value
   // if you want to change the default value, please change it in the web console or api console
   lifecycle {
@@ -142,6 +145,7 @@ resource "aws_ssm_parameter" "version" {
   name  = "/${local.parameter_store_path}/service-version"
   type  = "String"
   value = local.service_version
+  tags  = local.default_tags
 }
 
 # provision the dynamodb table
@@ -158,6 +162,7 @@ resource "aws_dynamodb_table" "table" {
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = each.value.key
   range_key    = try(each.value.range_key, "") != "" ? each.value.range_key : ""
+  tags         = local.default_tags
 
   point_in_time_recovery {
     enabled = true
@@ -210,6 +215,7 @@ resource "aws_ssm_parameter" "dynamodb-parameter" {
   name     = "/${local.parameter_store_path}/dynamodb-table-${each.value.name}"
   type     = "SecureString"
   value    = module.naming-dynamodb-table[each.value.name].name
+  tags     = local.default_tags
 }
 
 # update lambda function policy
@@ -273,6 +279,7 @@ resource "aws_cloudwatch_event_rule" "scheduler" {
   is_enabled          = true
   name                = "scheduler-${each.key}"
   schedule_expression = each.value.schedule_expression
+  tags                = local.default_tags
 }
 
 resource "aws_cloudwatch_event_target" "scheduler" {
