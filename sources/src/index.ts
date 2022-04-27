@@ -88,7 +88,7 @@ async function startLambda(event: any, context: any, callback: any) {
         //     `Function Service Name: ${functionServiceName}`,
         //     `Error: ${errorResponse}`,
         //     `Error Details: ${JSON.stringify(errorResponse)}`
-        // ].join(`\n`), datadogTags);
+        // ].join(`\n`), `error`, datadogTags);
         throw errorResponse;
 
     });

@@ -10,7 +10,7 @@ export class BookingCreateFunction extends LambdaFunction {
 
         let myBookingList: BookingModel[] = []
 
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 100; i++) {
             let myBooking = new BookingModel();
             myBooking.id = i.toString();
             myBooking.save();

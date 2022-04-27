@@ -3,6 +3,10 @@ import { GetParametersByPathCommand, Parameter, SSMClient } from "@aws-sdk/clien
 const SSM_PREFIX = `${process.env.PARAMETER_STORE_PATH}/`;
 const ssmClient = new SSMClient({ region: process.env.AWS_REGION || 'ap-southeast-1' });
 
+/**
+ * Parse the parameter store by path and define the environment variables
+ * @returns Promise<{ [key: string]: string }> The environment variables map
+ */
 export async function populateEnvironmentVariables() {
 
     let parameterList: Parameter[] = [];
@@ -36,7 +40,7 @@ export async function populateEnvironmentVariables() {
         let value = parameter.Value;
         if (!value) continue;
         // set the environment variable
-        console.info(`[ParameterStoreHelper][populateEnvironmentVariables] setting environment variable ${key} to ${value}`);
+        console.info(`[ParameterStoreHelper][populateEnvironmentVariables] setting environment variable ${key}`);
         process.env[key] = value;
     }
 

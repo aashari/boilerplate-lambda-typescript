@@ -1,7 +1,9 @@
 import { AttributeValue, DescribeTableCommand, DynamoDBClient, ScanCommandInput, WriteRequest } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { statistic } from '../decorators/statistic.decorator';
+import { chunk } from '../helpers/chunk.helper';
 import { Model } from '../models/model';
+import { DatadogLibrary } from './datadog.library';
 
 interface BATCH_COMMAND {
     [key: string]: (Omit<WriteRequest, "PutRequest" | "DeleteRequest"> & {
@@ -10,13 +12,17 @@ interface BATCH_COMMAND {
     })[];
 }
 
+/**
+ * DynamoDB library to interact with DynamoDB service, it can be used to create, update, delete, scan and query DynamoDB tables.
+ * By default, the put and delete methods will be queued and executed in batches, this is to avoid the DynamoDB service from being overloaded.
+ */
 export class DynamoDBLibrary {
 
-    private dynamoDBClient: DynamoDBClient;
-    private documentClinet: DynamoDBDocument;
-    private dynamodbTableKey: { [tableName: string]: string[] } = {};
-
     private static dynamoDBLibrary: DynamoDBLibrary;
+
+    private dynamoDBClient: DynamoDBClient;
+    private documentClient: DynamoDBDocument;
+    private dynamodbTableKey: { [tableName: string]: string[] } = {};
 
     private putCommandList: BATCH_COMMAND = {};
     private putCommandWaitingHandle: NodeJS.Timeout | undefined;
@@ -28,60 +34,111 @@ export class DynamoDBLibrary {
 
     public async initiateDatadogConfiguration() {
         this.dynamoDBClient = new DynamoDBClient({ region: process.env.AWS_REGION ?? 'ap-southeast-1' });
-        this.documentClinet = DynamoDBDocument.from(this.dynamoDBClient);
+        this.documentClient = DynamoDBDocument.from(this.dynamoDBClient);
     }
 
     public static async instance(): Promise<DynamoDBLibrary> {
         if (!DynamoDBLibrary.dynamoDBLibrary) DynamoDBLibrary.dynamoDBLibrary = new DynamoDBLibrary();
         await DynamoDBLibrary.dynamoDBLibrary.initiateDatadogConfiguration();
+        console.info('[DynamoDBLibrary][instance] DynamoDBLibrary initialized and ready to use');
         return DynamoDBLibrary.dynamoDBLibrary;
     }
 
+    private statisticHandler(tableName: string, method: string, data: any | undefined, errorResponse: any | undefined) {
+        DatadogLibrary.queueMetric(`dynamodb.${method}`, 1, `count`, [
+            `table:${tableName}`,
+            `class:DynamoDBLibrary`,
+            `method:${method}`,
+            `status:${errorResponse ? `failure` : `success`}`
+        ]);
+        if (!errorResponse) return;
+        console.error(`[DynamoDBLibrary][${method}] failed to ${method} data from/to table ${tableName}`, JSON.stringify({ errorResponse, data }));
+        DatadogLibrary.queueEvent(`DynamoDB ${method} error: ${tableName}`, [
+            `Table Name: ${tableName}`,
+            `Table Data: ${JSON.stringify(data)}`,
+            `Error: ${errorResponse}`,
+            `Error Details: ${JSON.stringify(errorResponse)}`,
+        ].join('\n'), "error", [`table:${tableName}`, `class:DynamoDBLibrary`, `method:${method}`]);
+    }
+
+    /**
+     * Get the table key configuration for the table which should contains the primary key and the sort key 
+     * @param tableName the DynamoDB table name
+     * @returns Promise<string[]> the list of string contains the pre defined DynamoDB table key attribute name
+     */
     @statistic()
     private static async getTableKey(tableName: string) {
+        // check if the table key is already cached
         if (this.dynamoDBLibrary.dynamodbTableKey[tableName]) return this.dynamoDBLibrary.dynamodbTableKey[tableName];
+        // generate empty string list
         let tableKey: string[] = [];
+        // get the table description
         let tableDescription = await this.dynamoDBLibrary.dynamoDBClient.send(new DescribeTableCommand({ TableName: tableName }));
+        // get all of the pre defined key attribute name
         tableDescription.Table?.KeySchema?.forEach((key) => {
             if (key.AttributeName) tableKey.push(key.AttributeName);
         });
+        // cache the table key attribute name list
         this.dynamoDBLibrary.dynamodbTableKey[tableName] = tableKey;
+        // return the table key attribute name list
         return tableKey;
     }
 
+    /**
+     * Get the item from the DynamoDB table by the primary key and the sort key (if available)
+     * @param tableName the DynamoDB table name
+     * @param key the primary key and the sort key (if available)
+     * @returns Promise<Model | null> the item from the DynamoDB table
+     */
     @statistic()
     public static async get(tableName: string, key: { [key: string]: string }): Promise<Model | null> {
-
-        // check whether the data still in queue
+        // check whether the item is still on the processing put queue
+        // if exist, return the item from the queue
         if (this.dynamoDBLibrary.putCommandList[tableName]) {
             let currentPutList: BATCH_COMMAND[string] = this.dynamoDBLibrary.putCommandList[tableName];
-            for (let keyName in key) {
-                currentPutList = currentPutList.filter((item) => item.PutRequest.Item[keyName] === key[keyName]);
-            }
+            for (let keyName in key) currentPutList = currentPutList.filter((item) => item.PutRequest.Item[keyName] === key[keyName]);
             if (currentPutList.length > 0) return currentPutList[0].PutRequest.Item;
         }
 
-        return this.dynamoDBLibrary.documentClinet.get({
+        // error response record
+        let errorResponse: any | undefined = undefined;
+
+        // if not exist, get the item from the table, and return the item
+        return this.dynamoDBLibrary.documentClient.get({
             TableName: tableName, Key: key,
         }).then((result) => {
             return result.Item ? result.Item as any : null;
         }).catch(err => {
-            console.error(`[DynamoDBLibrary][get] failed to get data from table ${tableName} with key ${JSON.stringify(key)}`);
+            errorResponse = err;
             return null;
-        });
+        }).finally(() => {
+            this.dynamoDBLibrary.statisticHandler(tableName, 'get', key, errorResponse);
+        })
     }
 
+    /**
+     * Put the item into the DynamoDB table by the primary key and the sort key (if available)
+     * @param tableName the DynamoDB table name
+     * @param data the item to be put into the DynamoDB table
+     * @param isQueue whether the put operation should be queued
+     * @returns Promise<boolean> whether the put operation is successful
+     */
     @statistic()
     public static async put(tableName: string, data: Model, isQueue: boolean = true): Promise<boolean> {
 
         if (!isQueue) {
-            return this.dynamoDBLibrary.documentClinet.put({
+            // error response record
+            let errorResponse: any | undefined = undefined;
+            // put the item into the table, and return the result
+            return this.dynamoDBLibrary.documentClient.put({
                 TableName: tableName, Item: data,
             }).then((result) => {
                 return result.$metadata.httpStatusCode === 200 ? true : false;
             }).catch(err => {
-                console.error(`[dynamodblibrary][put] failed to put data to table ${tableName} with data ${JSON.stringify(data)}`);
+                errorResponse = err;
                 return false;
+            }).finally(() => {
+                this.dynamoDBLibrary.statisticHandler(tableName, 'put', data, errorResponse);
             });
         }
 
@@ -99,7 +156,10 @@ export class DynamoDBLibrary {
             if (!tableName) return;
             let currentPutList: BATCH_COMMAND[string] = JSON.parse(JSON.stringify(this.dynamoDBLibrary.putCommandList[tableName]));
             this.dynamoDBLibrary.putCommandList[tableName] = [];
-            this.batchPutQueueByTable(tableName, currentPutList);
+            let chunkedList = chunk(currentPutList, 25) as BATCH_COMMAND[string][];
+            for (let currentChunk of chunkedList) {
+                this.batchPutQueueByTable(tableName, currentChunk);
+            }
         }, 300);
 
         // successfully queued write command
@@ -107,24 +167,33 @@ export class DynamoDBLibrary {
 
     }
 
+    /**
+     * Delete the item from the DynamoDB table by the primary key and the sort key (if available)
+     * @param tableName  the DynamoDB table name
+     * @param data the item to be deleted from the DynamoDB table
+     * @param isQueue whether the delete operation should be queued
+     * @returns Promise<boolean> whether the delete operation is successful
+     */
     @statistic()
     public static async delete(tableName: string, data: Model | { [key: string]: string }, isQueue: boolean = true): Promise<boolean> {
 
-        let tableKey = await this.getTableKey(tableName);
         let key = {};
-
-        tableKey.forEach((keyName) => {
-            key[keyName] = data[keyName];
-        });
+        let tableKey = await this.getTableKey(tableName);
+        tableKey.forEach((keyName) => key[keyName] = data[keyName]);
 
         if (!isQueue) {
-            return this.dynamoDBLibrary.documentClinet.delete({
+            // error response record
+            let errorResponse: any | undefined = undefined;
+            // delete the item from the table, and return the result
+            return this.dynamoDBLibrary.documentClient.delete({
                 TableName: tableName, Key: key,
             }).then((result) => {
                 return result.$metadata.httpStatusCode === 200 ? true : false;
             }).catch(err => {
-                console.error(`[dynamodblibrary][delete] failed to delete data from table ${tableName} with data ${JSON.stringify(data)}`);
+                errorResponse = err;
                 return false;
+            }).finally(() => {
+                this.dynamoDBLibrary.statisticHandler(tableName, 'delete', key, errorResponse);
             });
         }
 
@@ -142,7 +211,10 @@ export class DynamoDBLibrary {
             if (!tableName) return;
             let currentDeleteList: BATCH_COMMAND[string] = JSON.parse(JSON.stringify(this.dynamoDBLibrary.deleteCommandList[tableName]));
             this.dynamoDBLibrary.deleteCommandList[tableName] = [];
-            this.batchDeleteQueueByTable(tableName, currentDeleteList);
+            let chunkedList = chunk(currentDeleteList, 25) as BATCH_COMMAND[string][];
+            for (let currentChunk of chunkedList) {
+                this.batchDeleteQueueByTable(tableName, currentChunk);
+            }
         }, 300);
 
         // successfully queued write command
@@ -150,6 +222,13 @@ export class DynamoDBLibrary {
 
     }
 
+    /**
+     * Scan the items from the DynamoDB table
+     * @param tableName the DynamoDB table name
+     * @param filter the filter to be applied to the scan operation
+     * @param operand the operand to be applied to the filter
+     * @returns Promise<Model[]> the items from the DynamoDB table
+     */
     @statistic()
     public static async scan(tableName: string, filter: { [key: string]: string } | undefined = undefined, operand: string = 'AND'): Promise<Model[]> {
         let resultData: Model[] = [];
@@ -166,13 +245,18 @@ export class DynamoDBLibrary {
                     return acc;
                 }, {})
             }
-            let isSuccess = await this.dynamoDBLibrary.documentClinet.scan(params).then((result) => {
+            // error response record
+            let errorResponse: any | undefined = undefined;
+            // scan the items from the table, and return the result
+            let isSuccess = await this.dynamoDBLibrary.documentClient.scan(params).then((result) => {
                 lastEvaluatedKey = result.LastEvaluatedKey;
                 resultData = resultData.concat(result.Items as Model[]);
                 return result.$metadata.httpStatusCode === 200 ? true : false;
             }).catch(err => {
-                console.error(`[dynamodblibrary][scan] failed to scan data from table ${tableName} with filter ${JSON.stringify(filter)}`);
+                errorResponse = err;
                 return false;
+            }).finally(() => {
+                this.dynamoDBLibrary.statisticHandler(tableName, 'scan', filter, errorResponse);
             });
             if (!isSuccess) break;
             if (!lastEvaluatedKey) break;
@@ -180,6 +264,12 @@ export class DynamoDBLibrary {
         return resultData;
     }
 
+    /**
+     * Batch put the items into the DynamoDB table
+     * @param tableName the DynamoDB table name
+     * @param currentPutList the list of items to be put into the DynamoDB table
+     * @returns Promise<boolean> whether the put operation is successful
+     */
     @statistic()
     private static async batchPutQueueByTable(tableName: string, currentPutList: BATCH_COMMAND[string]) {
 
@@ -196,18 +286,28 @@ export class DynamoDBLibrary {
         });
 
         if (uniquePutList.length === 0) return false;
-
-        return this.dynamoDBLibrary.documentClinet.batchWrite({
+        // error response record
+        let errorResponse: any | undefined = undefined;
+        // batch put the items into the table, and return the result
+        return this.dynamoDBLibrary.documentClient.batchWrite({
             RequestItems: { [tableName]: uniquePutList },
         }).then((result) => {
             console.info(`[dynamodblibrary][batchPutQueueByTable] successfully put ${uniquePutList.length} items to table ${tableName}`);
             return result.$metadata.httpStatusCode === 200 ? true : false;
         }).catch(err => {
-            console.error(`[dynamodblibrary][batchPutQueueByTable] failed to batch put data to table ${tableName} with data ${JSON.stringify(currentPutList)}`);
+            errorResponse = err;
             return false;
+        }).finally(() => {
+            this.dynamoDBLibrary.statisticHandler(tableName, 'batchPut', uniquePutList, errorResponse);
         });
     }
 
+    /**
+     * Batch delete the items from the DynamoDB table
+     * @param tableName the DynamoDB table name
+     * @param currentDeleteList the list of items to be deleted from the DynamoDB table
+     * @returns Promise<boolean> whether the delete operation is successful
+     */
     @statistic()
     private static async batchDeleteQueueByTable(tableName: string, currentDeleteList: BATCH_COMMAND[string]) {
 
@@ -224,15 +324,19 @@ export class DynamoDBLibrary {
         });
 
         if (uniqueDeleteList.length === 0) return false;
-
-        return this.dynamoDBLibrary.documentClinet.batchWrite({
+        // error response record
+        let errorResponse: any | undefined = undefined;
+        // batch delete the items from the table, and return the result
+        return this.dynamoDBLibrary.documentClient.batchWrite({
             RequestItems: { [tableName]: uniqueDeleteList },
         }).then((result) => {
             console.info(`[dynamodblibrary][batchDeleteQueueByTable] successfully delete ${uniqueDeleteList.length} data from table ${tableName}`);
             return result.$metadata.httpStatusCode === 200 ? true : false;
         }).catch(err => {
-            console.error(`[dynamodblibrary][batchDeleteQueueByTable] failed to batch delete data from table ${tableName} with data ${JSON.stringify(currentDeleteList)}`);
+            errorResponse = err;
             return false;
+        }).then(() => {
+            this.dynamoDBLibrary.statisticHandler(tableName, 'batchDelete', uniqueDeleteList, errorResponse);
         });
 
     }
