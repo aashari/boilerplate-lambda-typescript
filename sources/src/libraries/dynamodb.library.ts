@@ -282,7 +282,7 @@ export class DynamoDBLibrary {
             tableKey.forEach((keyName) => {
                 if (uniquePutList.find((uniqueItem) => uniqueItem.PutRequest.Item[keyName] === item.PutRequest.Item[keyName])) isUnique.push(false);
             });
-            if (isUnique.length === 0) uniquePutList.push(item);
+            if (isUnique.length != tableKey.length) uniquePutList.push(item);
         });
 
         if (uniquePutList.length === 0) return false;
@@ -320,7 +320,7 @@ export class DynamoDBLibrary {
             tableKey.forEach((keyName) => {
                 if (uniqueDeleteList.find((uniqueItem) => uniqueItem.DeleteRequest.Key[keyName] === item.DeleteRequest.Key[keyName])) isUnique.push(false);
             });
-            if (isUnique.length === 0) uniqueDeleteList.push(item);
+            if (isUnique.length != tableKey.length) uniqueDeleteList.push(item);
         });
 
         if (uniqueDeleteList.length === 0) return false;
