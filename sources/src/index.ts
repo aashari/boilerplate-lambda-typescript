@@ -70,33 +70,37 @@ async function startLambda(event: any, context: any, callback: any) {
 
         // un comment this line to send the metric to datadog
         // let datadogTags = [
-        //     `function_name:${functionName}`,
-        //     `function_unique_code:${functionUniqueCode}`,
-        //     `function_service_name:${functionServiceName}`,
+        //     `name:${functionName}`,
         //     `status:${errorResponse ? 'failure' : 'success'}`
         // ];
+
         // // stream the metric to datadog
         // DatadogLibrary.queueMetric(`lambda.execution-count`, 1, "count", datadogTags);
         // DatadogLibrary.queueMetric(`lambda.execution-duration`, new Date().getTime() - start, "gauge", datadogTags);
+        // DatadogLibrary.queueMetric(`lambda.execution-left-time`, context.getRemainingTimeInMillis(), "gauge", datadogTags);
 
         if (!errorResponse) return;
-        console.error(`lambda function error: ${errorResponse}`, errorResponse);
-        // // un comment this line to send the metric to datadog
-        // DatadogLibrary.queueEvent(`Lambda function error: ${functionName}`, [
+
+        // log the errror message to cloudwatch logs
+        console.error(`Lambda ${functionName} execution error`, errorResponse);
+
+        // un comment this line to send the metric to datadog
+        // // stream the error to datadog event
+        // DatadogLibrary.queueEvent(`Lambda ${functionName} execution error`, [
         //     `Function Name: ${functionName}`,
-        //     `Function Unique Code: ${functionUniqueCode}`,
-        //     `Function Service Name: ${functionServiceName}`,
         //     `Error: ${errorResponse}`,
         //     `Error Details: ${JSON.stringify(errorResponse)}`
         // ].join(`\n`), `error`, datadogTags);
-        throw errorResponse;
+
+        // throw the original error
+        callback(errorResponse);
 
     });
 }
 
 export function handler(event: any, context: any, callback: any) {
     startLambda(event, context, callback).catch((error: any) => {
-        console.error(error);
+        console.error(`Lambda execution error`, error);
         return Promise.reject(error);
     });
 }

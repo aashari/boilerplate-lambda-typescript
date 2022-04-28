@@ -53,26 +53,35 @@ function _statistic(target: any, propertyKey: string, descriptor: PropertyDescri
             // return the original function response
             return response;
         }).catch((error: any) => {
+
             // record the execution time
             const executionDuration = new Date().getTime() - start;
+
             // if Datadog delivery is not enabled, then log the execution time to the console
             if (!isLogToDatadog) {
                 console.error(`statistic.method-execution-duration:${className}.${propertyKey} ${executionDuration}ms`);
                 // throw the original function error
                 throw error;
             }
+
             // if Datadog delivery is enabled, then send the execution time and count to Datadog
             DatadogLibrary.queueMetric(`statistic.method-execution-duration`, executionDuration, `gauge`, [...datadogTags, `status:failure`]);
             DatadogLibrary.queueMetric(`statistic.method-execution-count`, 1, `count`, [...datadogTags, `status:failure`]);
-            // deliver the error as event to Datadog to track the error
-            DatadogLibrary.queueEvent(`Method execution failure: ${className}.${propertyKey}`, [
+
+            // log the errror message to cloudwatch logs
+            console.error(`Method ${className}.${propertyKey} execution error`, error);
+
+            // stream the error to datadog event
+            DatadogLibrary.queueEvent(`Method ${className}.${propertyKey} execution error`, [
                 `Class name: ${className}`,
                 `Method name: ${propertyKey}`,
                 `Error: ${error}`,
                 `Error Details: ${JSON.stringify(error)}`
             ].join(`\n`), "error", [...datadogTags, `status:failure`]);
+
             // throw the original function error
             throw error;
+
         });
     };
 }

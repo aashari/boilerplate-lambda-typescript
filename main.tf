@@ -14,6 +14,12 @@ locals {
 
 }
 
+# create KMS key alias for the service
+resource "aws_kms_alias" "key" {
+  name          = "alias/${local.service_domain}/${local.service_name}"
+  target_key_id = aws_kms_key.key.key_id
+}
+
 # create KMS key for the service
 resource "aws_kms_key" "key" {
   description         = "${local.service_name}-key"

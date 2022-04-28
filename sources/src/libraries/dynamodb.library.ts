@@ -45,20 +45,27 @@ export class DynamoDBLibrary {
     }
 
     private statisticHandler(tableName: string, method: string, data: any | undefined, errorResponse: any | undefined) {
+
         DatadogLibrary.queueMetric(`dynamodb.${method}`, 1, `count`, [
             `table:${tableName}`,
             `class:DynamoDBLibrary`,
             `method:${method}`,
             `status:${errorResponse ? `failure` : `success`}`
         ]);
+
         if (!errorResponse) return;
-        console.error(`[DynamoDBLibrary][${method}] failed to ${method} data from/to table ${tableName}`, JSON.stringify({ errorResponse, data }));
-        DatadogLibrary.queueEvent(`DynamoDB ${method} error: ${tableName}`, [
+
+        // log the errror message to cloudwatch logs
+        console.error(`[DynamoDBLibrary][${method}] DynamoDB ${method}.${tableName} execution error`, { errorResponse, data });
+
+        // stream the error to datadog event
+        DatadogLibrary.queueEvent(`DynamoDB ${method}.${tableName} execution error`, [
             `Table Name: ${tableName}`,
             `Table Data: ${JSON.stringify(data)}`,
             `Error: ${errorResponse}`,
             `Error Details: ${JSON.stringify(errorResponse)}`,
         ].join('\n'), "error", [`table:${tableName}`, `class:DynamoDBLibrary`, `method:${method}`]);
+        
     }
 
     /**
