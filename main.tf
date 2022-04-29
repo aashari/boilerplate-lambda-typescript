@@ -50,6 +50,7 @@ resource "null_resource" "source-code-builder" {
     source-code-md5 = data.archive_file.source-code.output_md5
     service_domain  = local.service_domain
     service_name    = local.service_name
+    file_dist       = fileexists("${path.module}/sources/dist/index.js") ? "${path.module}/sources/dist/index.js" : timestamp()
   }
 }
 
@@ -66,9 +67,10 @@ resource "null_resource" "dependencies-builder" {
     EOT
   }
   triggers = {
-    dependencies-md5 = filemd5("${path.module}/sources/package-lock.json")
-    service_domain   = local.service_domain
-    service_name     = local.service_name
+    dependencies-md5  = filemd5("${path.module}/sources/package-lock.json")
+    service_domain    = local.service_domain
+    service_name      = local.service_name
+    file_node_modules = fileexists("${path.module}/sources/node_modules/package-lock.json") ? "${path.module}/sources/node_modules/package-lock.json" : timestamp()
   }
 }
 
