@@ -1,7 +1,9 @@
 import { GetParametersByPathCommand, Parameter, SSMClient } from "@aws-sdk/client-ssm";
 
-const SSM_PREFIX = `${process.env.PARAMETER_STORE_PATH}/`;
-const ssmClient = new SSMClient({ region: process.env.AWS_REGION || 'ap-southeast-1' });
+const SSM_PREFIX = `/service/${process.env.SERVICE_DOMAIN}/${process.env.SERVICE_NAME}/${process.env.SERVICE_ENVIRONMENT}/`;
+const SSM_CLIENT = new SSMClient({
+    region: process.env.AWS_REGION || 'ap-southeast-1'
+});
 
 /**
  * Parse the parameter store by path and define the environment variables
@@ -14,12 +16,12 @@ export async function populateEnvironmentVariables() {
     // get all parameter based on the prefix
     let nexToken: string | undefined;
     while (true) {
-        let parameterListResponse = await ssmClient.send(new GetParametersByPathCommand({
+        let parameterListResponse = await SSM_CLIENT.send(new GetParametersByPathCommand({
             Path: SSM_PREFIX,
             WithDecryption: true,
             NextToken: nexToken
         })).catch(e => {
-            console.error(`[ParameterStoreHelper][populateEnvironmentVariables] failed to get parameters from parameter store`, e);
+            console.error(`[ParameterStoreHelper][populateEnvironmentVariables] failed to get parameters from parameter store with path ${SSM_PREFIX}`, e);
             return null;
         });
         if (parameterListResponse?.Parameters) {
@@ -44,6 +46,7 @@ export async function populateEnvironmentVariables() {
         process.env[key] = value;
     }
 
+    // return all the env
     return process.env
 
 }

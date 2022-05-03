@@ -12,19 +12,16 @@ locals {
   # service environment is the environment of the service
   service_environment = "dev"
 
-  # parameter store prefix
-  parameter_store_path = "tvlk-secret/${local.service_name}/${local.service_domain}"
-
   # following configuration is an optional configuration
-  # generate parameter store which will be loaded into the lambda function environment
+  # generate SSM Parameter Store which will be loaded into the Lambda Function environment
   parameter_store_list = [
-    "dd-api-key", // this will be loaded into the lambda function environment as DD_API_KEY
-    "dd-app-key", // this will be loaded into the lambda function environment as DD_APP_KEY
+    "dd-api-key", // this will be loaded into the Lambda Function environment as DD_API_KEY
+    "dd-app-key", // this will be loaded into the Lambda Function environment as DD_APP_KEY
   ]
 
   # following configuration is an optional configuration
-  # this will create a dynamodb table and parameter store to store the table name
-  # the parameterstore will be loaded into the lambda function environment as DYNAMO_DB_TABLE_${each.name}
+  # this will create a DynamoDB Table and SSM Parameter Store to store the table name
+  # the parameterstore will be loaded into the Lambda Function environment as DYNAMO_DB_TABLE_${each.name}
   dynamodb_table_list = [
     {
       name : "booking",
@@ -42,18 +39,18 @@ locals {
   ]
 
   # following configuration is an optional configuration
-  # leave this as empty object if you don't want to use lambda custom configuration
-  lambda_custom_configuration = {
+  # leave this as empty object if you don't want to use Lambda Function custom configuration
+  lambda_function_custom_configuration = {
     booking-create : {
       lambda_memory_size : "128",
       lambda_timeout : "60",
-      schedule_expression : "rate(1 minute)", // this will trigger the lambda function every minute
+      schedule_expression : "rate(1 minute)", // this will trigger the Lambda Function every minute
     }
   }
 
   # define the default tags for the resources
   default_tags = {
-    "Name" : "${local.service_name}-${local.service_environment}",
+    "Name" : "${local.service_domain}-${local.service_name}-${local.service_environment}",
     "Environment" : "${local.service_environment}",
     "Service" : "${local.service_name}",
     "ServiceName" : "${local.service_name}",

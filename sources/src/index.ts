@@ -21,12 +21,16 @@ async function startLambda(event: any, context: any, callback: any) {
     let functionNameComponent = context.functionName.split('-');
 
     // parse the naming based on function name component
+    let functionServiceDomain = functionNameComponent.shift();
     let functionServiceName = functionNameComponent.shift();
+    let functionServiceEnvironment = functionNameComponent.shift();
     let functionUniqueCode = functionNameComponent.pop();
     let functionName = functionNameComponent.join('-');
 
     // store the function naming component to environment variable
+    process.env.FUNCTION_SERVICE_DOMAIN = functionServiceDomain;
     process.env.FUNCTION_SERVICE_NAME = functionServiceName;
+    process.env.FUNCTION_SERVICE_ENVIRONMENT = functionServiceEnvironment;
     process.env.FUNCTION_NAME = functionName;
     process.env.FUNCTION_UNIQUE_CODE = functionUniqueCode;
 

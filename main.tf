@@ -14,190 +14,13 @@ locals {
 
 }
 
-# create KMS key alias for the service
-resource "aws_kms_alias" "key" {
-  name          = "alias/${local.service_domain}/${local.service_name}"
-  target_key_id = aws_kms_key.key.key_id
-}
-
-# create KMS key for the service
-resource "aws_kms_key" "key" {
-  description         = "${local.service_name}-key"
-  key_usage           = "ENCRYPT_DECRYPT"
-  enable_key_rotation = true
-  tags                = local.default_tags
-}
-
-# create the source code archive which will triggered whenever there's file change in the source code directory
-# this is to generate the hash of the source code directory
-data "archive_file" "source-code" {
-  type        = "zip"
-  source_dir  = "${path.module}/sources/src"
-  output_path = "${local.temporary_build_prefix}/source-code.zip"
-}
-
-# if the hash of the source code directory is different from the previous hash, 
-# then we sould trigger the build process
-resource "null_resource" "source-code-builder" {
-  depends_on = [
-    null_resource.models-builder,
-  ]
-  provisioner "local-exec" {
-    working_dir = "${path.module}/sources"
-    command     = "npm run build"
-  }
-  triggers = {
-    source-code-md5 = data.archive_file.source-code.output_md5
-    service_domain  = local.service_domain
-    service_name    = local.service_name
-    file_dist       = fileexists("${path.module}/sources/dist/index.js") ? "${path.module}/sources/dist/index.js" : timestamp()
-  }
-}
-
-# if the hash of the dependencies file is different from the previous hash,
-# then we sould trigger the build process
-resource "null_resource" "dependencies-builder" {
-  provisioner "local-exec" {
-    working_dir = "${path.module}/sources"
-    command     = <<EOT
-      npm install
-      rm -rf ${local.temporary_build_prefix}/layers
-      mkdir -p ${local.temporary_build_prefix}/layers/nodejs
-      cp -r node_modules ${local.temporary_build_prefix}/layers/nodejs
-    EOT
-  }
-  triggers = {
-    dependencies-md5  = filemd5("${path.module}/sources/package-lock.json")
-    service_domain    = local.service_domain
-    service_name      = local.service_name
-    file_node_modules = fileexists("${path.module}/sources/node_modules/package-lock.json") ? "${path.module}/sources/node_modules/package-lock.json" : timestamp()
-  }
-}
-
-# create lambda layer archive file
-data "archive_file" "layer" {
-  type        = "zip"
-  depends_on  = [null_resource.dependencies-builder]
-  source_dir  = "${local.temporary_build_prefix}/layers"
-  output_path = "${local.temporary_build_prefix}/layers-${filemd5("${path.module}/sources/package-lock.json")}.zip"
-}
-
-# create lambda layer name
-module "naming-layer" {
-  source        = "git@github.com:traveloka/terraform-aws-resource-naming.git?ref=v0.22.0"
-  name_prefix   = "${local.service_name}-layer"
-  resource_type = "lambda_function"
-}
-
-# provision lambda layer based on the layer archive file
-resource "aws_lambda_layer_version" "layer" {
-  filename            = data.archive_file.layer.output_path
-  description         = "${local.service_name} ${local.service_environment} layer"
-  layer_name          = module.naming-layer.name
-  compatible_runtimes = [local.lambda_runtime]
-}
-
-# provision the lambda function
-module "function" {
-
-  depends_on = [
-    null_resource.source-code-builder,
-  ]
-
-  source   = "git@github.com:traveloka/terraform-aws-lambda.git?ref=v2.0.2"
-  for_each = local.functions
-
-  lambda_descriptive_name = each.value
-  product_domain          = local.service_domain
-  service_name            = local.service_name
-  environment             = local.service_environment
-
-  lambda_code_directory_path    = "${path.module}/sources/dist"
-  lambda_archive_directory_path = "${local.temporary_build_prefix}/functions-${each.value}-${data.archive_file.source-code.output_md5}.zip"
-  lambda_layer_arns             = [aws_lambda_layer_version.layer.arn]
-  lambda_runtime                = local.lambda_runtime
-  lambda_handler                = "index.handler"
-  lambda_memory_size            = try(local.lambda_custom_configuration[each.value].lambda_memory_size, "512")
-  lambda_timeout                = try(local.lambda_custom_configuration[each.value].lambda_timeout, "60")
-  log_retention_days            = "7"
-  additional_tags               = local.default_tags
-
-  lambda_environment_variables = {
-    PARAMETER_STORE_PATH = "/${local.parameter_store_path}"
-  }
-
-  enable_enhanced_monitoring = "yes"
-  enable_active_tracing      = "yes"
-
-  is_local_archive = "true"
-  is_lambda_vpc    = "false"
-
-}
-
-# provision the parameter store
-resource "aws_ssm_parameter" "parameter" {
-  for_each = toset(local.parameter_store_list)
-  name     = "/${local.parameter_store_path}/${each.value}"
-  type     = "SecureString"
-  value    = "placeholder"
-  tags     = local.default_tags
-  // the following is to make sure the parameter store is not overwritten by the default value
-  // if you want to change the default value, please change it in the web console or api console
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
-
-# provision the parameter store to store the service version
-resource "aws_ssm_parameter" "version" {
-  name  = "/${local.parameter_store_path}/service-version"
-  type  = "String"
-  value = local.service_version
-  tags  = local.default_tags
-}
-
-# provision the dynamodb table
-module "naming-dynamodb-table" {
-  for_each      = { for table in local.dynamodb_table_list : table.name => table }
-  source        = "git@github.com:traveloka/terraform-aws-resource-naming.git?ref=v0.22.0"
-  name_prefix   = "${local.service_name}-${each.value.name}"
-  resource_type = "dynamodb_table"
-}
-
-resource "aws_dynamodb_table" "table" {
-  for_each     = { for table in local.dynamodb_table_list : table.name => table }
-  name         = module.naming-dynamodb-table[each.value.name].name
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = each.value.key
-  range_key    = try(each.value.range_key, "") != "" ? each.value.range_key : ""
-  tags         = local.default_tags
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = aws_kms_key.key.arn
-  }
-
-  attribute {
-    name = each.value.key
-    type = "S"
-  }
-
-  dynamic "attribute" {
-    for_each = toset(try(each.value.range_key, "") != "" ? [each.value.range_key] : [])
-    content {
-      name = each.value.range_key
-      type = "S"
-    }
-  }
-
-}
-
-resource "null_resource" "models-builder" {
-  for_each = { for table in local.dynamodb_table_list : table.name => table }
+# build a TypeScript model based on DynamoDB table list
+# this will generate a TypeScript model for each DynamoDB table 
+# and store it in the sources/src/models directory with format of <table_name>.module.ts
+# the TypeScript model will only be generated if the model file does not exist
+resource "null_resource" "typescript-source-model-builder" {
+  for_each   = { for table in local.dynamodb_table_list : table.name => table }
+  depends_on = [null_resource.lambda-layer-source-builder]
   provisioner "local-exec" {
     working_dir = "${path.module}/sources"
     command     = <<EOT
@@ -218,92 +41,239 @@ resource "null_resource" "models-builder" {
   }
 }
 
-resource "aws_ssm_parameter" "dynamodb-parameter" {
+# build the dist directory using npm run build
+# this will generate the Javascript from Typescript source code using TypeScript compiler
+# this builder will only run when:
+# - there's a change in the source code directory
+# - there's a change in service domain value
+# - there's a change in service name value
+# - there's no existing dist directory
+resource "null_resource" "lambda-function-source-builder" {
+  depends_on = [null_resource.typescript-source-model-builder]
+  provisioner "local-exec" {
+    working_dir = "${path.module}/sources"
+    command     = "npm run build"
+  }
+  triggers = {
+    lambda-function-md5 = data.archive_file.typescript-source.output_md5
+    service_domain      = local.service_domain
+    service_name        = local.service_name
+    file_dist           = fileexists("${path.module}/sources/dist/index.js") ? "${path.module}/sources/dist/index.js" : timestamp()
+  }
+}
+
+# build the dependencies directory using npm install
+# this will generate the dependencies file from the package.json file
+# this will be used as Lambda Layer archive file
+# this builder will only run when:
+# - there's a change in package.json file
+# - there's a change in package-lock.json file
+# - there's a change in service domain value
+# - there's a change in service name value
+# - there's no existing dependencies directory
+resource "null_resource" "lambda-layer-source-builder" {
+  provisioner "local-exec" {
+    working_dir = "${path.module}/sources"
+    command     = <<EOT
+      npm install
+      rm -rf ${local.temporary_build_prefix}/lambda-layer-source
+      mkdir -p ${local.temporary_build_prefix}/lambda-layer-source/nodejs
+      cp -r node_modules ${local.temporary_build_prefix}/lambda-layer-source/nodejs
+    EOT
+  }
+  triggers = {
+    dependencies-file-md5 = filemd5("${path.module}/sources/package.json")
+    dependencies-lock-md5 = filemd5("${path.module}/sources/package-lock.json")
+    service_domain        = local.service_domain
+    service_name          = local.service_name
+    file_node_modules     = fileexists("${path.module}/sources/node_modules/package-lock.json") ? "${path.module}/sources/node_modules/package-lock.json" : timestamp()
+  }
+}
+
+# create kms key for the service
+# this kms key will be used as a service encryption key
+resource "aws_kms_key" "service-key" {
+  description         = "${local.service_domain}-${local.service_name}-${local.service_environment}-key"
+  key_usage           = "ENCRYPT_DECRYPT"
+  enable_key_rotation = true
+  tags                = local.default_tags
+}
+
+# create alias for kms key
+resource "aws_kms_alias" "service-alias" {
+  name          = "alias/service/${local.service_domain}/${local.service_name}/${local.service_environment}"
+  target_key_id = aws_kms_key.service-key.key_id
+}
+
+# create Lambda Layer for the service
+resource "aws_lambda_layer_version" "lambda-layer" {
+  filename            = data.archive_file.lambda-layer-source.output_path
+  description         = "${local.service_name} ${local.service_environment} layer"
+  layer_name          = module.lambda-layer-name.name
+  compatible_runtimes = [local.lambda_runtime]
+}
+
+# create CloudWatch Log Group for Lambda Function
+resource "aws_cloudwatch_log_group" "lambda-function-log-group" {
+  for_each          = local.functions
+  name              = "/aws/lambda/${module.lambda-function-name[each.value].name}"
+  retention_in_days = 7
+  tags              = local.default_tags
+}
+
+# create IAM Role for Lambda Function
+resource "aws_iam_role" "lambda-function-role" {
+  for_each = local.functions
+  name     = substr("ServiceRoleForLambda-${module.lambda-function-name[each.value].name}", 0, 64)
+  tags     = local.default_tags
+  assume_role_policy = jsonencode({
+    "Version" : "2012-10-17",
+    "Statement" : [{
+      "Action" : "sts:AssumeRole",
+      "Principal" : {
+        "Service" : "lambda.amazonaws.com"
+      },
+      "Effect" : "Allow",
+    }]
+  })
+}
+
+resource "aws_lambda_function" "lambda-function" {
+
+  for_each      = local.functions
+  filename      = data.archive_file.lambda-function-source.output_path
+  function_name = module.lambda-function-name[each.value].name
+
+  handler     = "index.handler"
+  runtime     = local.lambda_runtime
+  role        = aws_iam_role.lambda-function-role[each.value].arn
+  timeout     = try(local.lambda_function_custom_configuration[each.value].lambda_timeout, 60)
+  memory_size = try(local.lambda_function_custom_configuration[each.value].lambda_memory_size, 128)
+
+  source_code_hash = data.archive_file.lambda-function-source.output_sha
+  layers           = [aws_lambda_layer_version.lambda-layer.arn]
+  tags             = local.default_tags
+
+  environment {
+    variables = {
+      "SERVICE_DOMAIN"      = local.service_domain
+      "SERVICE_NAME"        = local.service_name
+      "SERVICE_ENVIRONMENT" = local.service_environment
+    }
+  }
+
+}
+
+# create DynamoDB table for the service based on the local.dynamodb_table_list value 
+resource "aws_dynamodb_table" "dynamodb-table" {
+
   for_each = { for table in local.dynamodb_table_list : table.name => table }
-  name     = "/${local.parameter_store_path}/dynamodb-table-${each.value.name}"
+
+  name         = module.dynamodb-table-name[each.value.name].name
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = each.value.key
+  range_key    = try(each.value.range_key, "") != "" ? each.value.range_key : ""
+  tags         = local.default_tags
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.service-key.arn
+  }
+
+  attribute {
+    name = each.value.key
+    type = "S"
+  }
+
+  dynamic "attribute" {
+    for_each = toset(try(each.value.range_key, "") != "" ? [each.value.range_key] : [])
+    content {
+      name = each.value.range_key
+      type = "S"
+    }
+  }
+
+}
+
+# create SSM Parameter Store to store DynamoDB table name based on the local.dynamodb_table_list value
+# this parameter will be used to load the environment variables to get the actual DynamoDB table name
+# the environment variables will be create with this format DYNAMODB_TABLE_<table_name>
+resource "aws_ssm_parameter" "ssm-parameter-dynamodb-table" {
+  for_each = { for table in local.dynamodb_table_list : table.name => table }
+  name     = "/service/${local.service_domain}/${local.service_name}/${local.service_environment}/dynamodb-table-${each.value.name}"
+  key_id   = aws_kms_alias.service-alias.id
   type     = "SecureString"
-  value    = module.naming-dynamodb-table[each.value.name].name
+  value    = module.dynamodb-table-name[each.value.name].name
   tags     = local.default_tags
 }
 
-# update lambda function policy
-data "aws_iam_policy_document" "function-policy" {
-
-  statement {
-    sid = "AllowParameterStoreRead"
-    actions = [
-      "ssm:GetParametersByPath",
-    ]
-    effect = "Allow"
-    resources = [
-      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.id}:parameter/${local.parameter_store_path}/*",
-    ]
+# create SSM Parameter Store based on the local.ssm_parameter_list value
+# this parameter will be used to load the environment variables to get the actual SSM parameter value
+resource "aws_ssm_parameter" "ssm-parameter-custom" {
+  for_each = toset(local.parameter_store_list)
+  name     = "/service/${local.service_domain}/${local.service_name}/${local.service_environment}/${each.value}"
+  key_id   = aws_kms_alias.service-alias.id
+  type     = "SecureString"
+  value    = "placeholder"
+  tags     = local.default_tags
+  lifecycle {
+    ignore_changes = [value]
   }
-
-  statement {
-    sid = "AllowDynamoDBAccess"
-    actions = [
-      "dynamodb:Get*",
-      "dynamodb:Put*",
-      "dynamodb:Query",
-      "dynamodb:Scan",
-      "dynamodb:BatchWriteItem",
-      "dynamodb:DescribeTable"
-    ]
-    effect    = "Allow"
-    resources = [for table in local.dynamodb_table_list : "arn:aws:dynamodb:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:table/${module.naming-dynamodb-table[table.name].name}"]
-  }
-
-  statement {
-    sid = "AllowKMSAccess"
-    actions = [
-      "kms:Decrypt*",
-      "kms:Encrypt*",
-    ]
-    effect = "Allow"
-    resources = [
-      aws_kms_key.key.arn,
-    ]
-  }
-
 }
 
-# provision the permission for the lambda function
+# create SSM Parameter Store to store the service version
+# this parameter will be used to load the environment variables to get the actual service version
+# the environment variables will be create with this format SERVICE_VERSION
+resource "aws_ssm_parameter" "ssm-parameter-service-version" {
+  name   = "/service/${local.service_domain}/${local.service_name}/${local.service_environment}/service-version"
+  key_id = aws_kms_alias.service-alias.id
+  type   = "String"
+  value  = local.service_version
+  tags   = local.default_tags
+}
+
+# attach the Lambda Function policy to the Lambda Function Role
 resource "aws_iam_role_policy" "function-policy" {
-  for_each = module.function
+  for_each = aws_iam_role.lambda-function-role
   name     = "function-policy"
-  role     = each.value.role_name
+  role     = each.value.name
   policy   = data.aws_iam_policy_document.function-policy.json
 }
 
-# provision the scheduled event for the lambda function
-resource "aws_cloudwatch_event_rule" "scheduler" {
+# create the Cloudwatch Event Rule for the Lambda Function with schedule_expression attribute
+resource "aws_cloudwatch_event_rule" "lambda-function-trigger-schedule" {
   for_each = {
-    for name, configuration in local.lambda_custom_configuration : name => configuration
+    for name, configuration in local.lambda_function_custom_configuration : name => configuration
     if configuration.schedule_expression != ""
   }
-  description         = "Lambda trigger scheduler for ${each.key}"
+  description         = "Lambda Function trigger schedule for ${each.key}"
   event_bus_name      = "default"
   is_enabled          = true
-  name                = "scheduler-${each.key}"
+  name                = each.key
   schedule_expression = each.value.schedule_expression
   tags                = local.default_tags
 }
 
-resource "aws_cloudwatch_event_target" "scheduler" {
-  for_each       = aws_cloudwatch_event_rule.scheduler
-  arn            = module.function[each.key].lambda_arn
+# set the Cloudwatch Event Rule target to the Lambda Function
+resource "aws_cloudwatch_event_target" "lambda-function-trigger-schedule" {
+  for_each       = aws_cloudwatch_event_rule.lambda-function-trigger-schedule
+  arn            = aws_lambda_function.lambda-function[each.key].arn
   event_bus_name = "default"
-  rule           = aws_cloudwatch_event_rule.scheduler[each.key].name
-  target_id      = "scheduler-${each.key}"
+  rule           = aws_cloudwatch_event_rule.lambda-function-trigger-schedule[each.key].name
+  target_id      = "lambda-function-trigger-schedule-${each.key}"
 }
 
-resource "aws_lambda_permission" "scheduler" {
-  depends_on    = [module.function]
-  for_each      = aws_cloudwatch_event_rule.scheduler
-  statement_id  = "AllowSchedulerInvoke"
+# give the permission to the Cloudwatch Event Rule to invoke the Lambda Function
+resource "aws_lambda_permission" "lambda-function-trigger-schedule" {
+  depends_on    = [aws_lambda_function.lambda-function]
+  for_each      = aws_cloudwatch_event_rule.lambda-function-trigger-schedule
+  statement_id  = "AllowLambdaFunctionTriggerSchedule"
   action        = "lambda:InvokeFunction"
-  function_name = module.function[each.key].lambda_name
+  function_name = aws_lambda_function.lambda-function[each.key].function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.scheduler[each.key].arn
+  source_arn    = aws_cloudwatch_event_rule.lambda-function-trigger-schedule[each.key].arn
 }
