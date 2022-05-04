@@ -38,7 +38,7 @@ dynamodb_table_list = [
 
 # following configuration is an optional configuration
 # leave this as empty object if you don't want to use Lambda Function custom configuration
-lambda_function_custom_configuration = {
+lambda_function_configuration = {
   booking-create : {
     lambda_memory_size : "128",
     lambda_timeout : "60",

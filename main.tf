@@ -181,8 +181,8 @@ resource "aws_lambda_function" "lambda-function" {
   handler     = "index.handler"
   runtime     = local.lambda_runtime
   role        = aws_iam_role.lambda-function-role[each.value].arn
-  timeout     = try(var.lambda_function_custom_configuration[each.value].lambda_timeout, 60)
-  memory_size = try(var.lambda_function_custom_configuration[each.value].lambda_memory_size, 128)
+  timeout     = try(var.lambda_function_configuration[each.value].lambda_timeout, 60)
+  memory_size = try(var.lambda_function_configuration[each.value].lambda_memory_size, 128)
 
   source_code_hash = data.archive_file.lambda-function-source.output_sha
   layers           = [aws_lambda_layer_version.lambda-layer.arn]
@@ -281,7 +281,7 @@ resource "aws_iam_role_policy" "function-policy" {
 # create the Cloudwatch Event Rule for the Lambda Function with schedule_expression attribute
 resource "aws_cloudwatch_event_rule" "lambda-function-trigger-schedule" {
   for_each = {
-    for name, configuration in var.lambda_function_custom_configuration : name => configuration
+    for name, configuration in var.lambda_function_configuration : name => configuration
     if configuration.schedule_expression != ""
   }
   description         = "Lambda Function trigger schedule for ${each.key}"
