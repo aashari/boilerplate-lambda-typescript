@@ -9,15 +9,16 @@ const SSM_CLIENT = new SSMClient({
  * Parse the parameter store by path and define the environment variables
  * @returns Promise<{ [key: string]: string }> The environment variables map
  */
-export async function populateEnvironmentVariables() {
+export async function populateEnvironmentVariables(ssmPrefix: string | undefined = undefined, environmentVariablePrefix: string | undefined = undefined) {
 
     let parameterList: Parameter[] = [];
+    if (environmentVariablePrefix) environmentVariablePrefix = environmentVariablePrefix.toUpperCase().replace(/[^a-zA-Z0-9]/g, '_');
 
     // get all parameter based on the prefix
     let nexToken: string | undefined;
     while (true) {
         let parameterListResponse = await SSM_CLIENT.send(new GetParametersByPathCommand({
-            Path: SSM_PREFIX,
+            Path: ssmPrefix ? ssmPrefix : SSM_PREFIX,
             WithDecryption: true,
             NextToken: nexToken
         })).catch(e => {
@@ -36,7 +37,7 @@ export async function populateEnvironmentVariables() {
         if (!parameter?.Name) continue;
         // parse the name of the parameter
         // this will convert the parameter name to upper case and replace the '-' with '_'
-        let key = parameter.Name.replace(SSM_PREFIX, '').toUpperCase().replace(/[^a-zA-Z0-9]/g, '_');
+        let key = (environmentVariablePrefix ? environmentVariablePrefix + '_' : '') + parameter.Name.replace(ssmPrefix ? ssmPrefix : SSM_PREFIX, '').toUpperCase().replace(/[^a-zA-Z0-9]/g, '_');
         if (key.startsWith(`_`)) key = key.substring(1);
         // get the value of the parameter
         let value = parameter.Value;

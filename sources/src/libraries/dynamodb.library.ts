@@ -246,9 +246,13 @@ export class DynamoDBLibrary {
                 ExclusiveStartKey: lastEvaluatedKey,
             }
             if (filter) {
-                params.FilterExpression = Object.keys(filter).map((key) => `#${key} = :${key}`).join(` ${operand} `);
-                params.ExpressionAttributeValues = Object.keys(filter).reduce((acc, cur) => {
-                    acc[`#${cur}`] = cur;
+                params.FilterExpression = Object.keys(filter).map((key) => `contains(#${key}, :${key})`).join(` ${operand} `);
+                params.ExpressionAttributeNames = Object.keys(filter).reduce((acc, key) => {
+                    acc[`#${key}`] = key;
+                    return acc;
+                }, {});
+                params.ExpressionAttributeValues = Object.keys(filter).reduce((acc, key) => {
+                    acc[`:${key}`] = filter[key];
                     return acc;
                 }, {})
             }
@@ -263,7 +267,7 @@ export class DynamoDBLibrary {
                 errorResponse = err;
                 return false;
             }).finally(() => {
-                this.dynamoDBLibrary.statisticHandler(tableName, 'scan', filter, errorResponse);
+                this.dynamoDBLibrary.statisticHandler(tableName, 'scan', { filter, params }, errorResponse);
             });
             if (!isSuccess) break;
             if (!lastEvaluatedKey) break;

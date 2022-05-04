@@ -17,22 +17,9 @@ async function startLambda(event: any, context: any, callback: any) {
     // store the timestamp to calculate the duration
     const start = new Date().getTime();
 
-    // create function name component
-    let functionNameComponent = context.functionName.split('-');
-
     // parse the naming based on function name component
-    let functionServiceDomain = functionNameComponent.shift();
-    let functionServiceName = functionNameComponent.shift();
-    let functionServiceEnvironment = functionNameComponent.shift();
-    let functionUniqueCode = functionNameComponent.pop();
-    let functionName = functionNameComponent.join('-');
-
-    // store the function naming component to environment variable
-    process.env.FUNCTION_SERVICE_DOMAIN = functionServiceDomain;
-    process.env.FUNCTION_SERVICE_NAME = functionServiceName;
-    process.env.FUNCTION_SERVICE_ENVIRONMENT = functionServiceEnvironment;
-    process.env.FUNCTION_NAME = functionName;
-    process.env.FUNCTION_UNIQUE_CODE = functionUniqueCode;
+    let functionServiceName = process.env.SERVICE_NAME ?? ``;
+    let functionName = process.env.FUNCTION_NAME ?? ``;
 
     // --------------------------------------------------
     // load the helpers here
@@ -66,7 +53,6 @@ async function startLambda(event: any, context: any, callback: any) {
 
         console.info(`---------------------------------------------`);
         console.info(`lambda function name: ${functionName}`);
-        console.info(`lambda function unique code: ${functionUniqueCode}`);
         console.info(`lambda function service name: ${functionServiceName}`);
         console.info(`lambda function duration: ${new Date().getTime() - start} ms`);
         console.info(`lambda function left time: ${context.getRemainingTimeInMillis()} ms`);

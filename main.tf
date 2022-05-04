@@ -22,13 +22,16 @@ locals {
     "ServiceVersion" : "${var.service_version}",
   }, var.default_tags)
 
+  # define resources prefix name
+  resource_prefix_name = substr(var.service_name, 0, length(var.service_domain)) == var.service_domain ? "${var.service_name}-${var.service_environment}" : "${var.service_domain}-${var.service_name}-${var.service_environment}"
+
 }
 
 # naming section to standardize the naming of the resources
 # naming for Lambda Layer
 module "lambda-layer-name" {
   source        = "git@github.com:traveloka/terraform-aws-resource-naming.git?ref=v0.22.0"
-  name_prefix   = "${var.service_domain}-${var.service_name}-${var.service_environment}-layer"
+  name_prefix   = "${local.resource_prefix_name}-layer"
   resource_type = "lambda_function"
 }
 
@@ -36,7 +39,7 @@ module "lambda-layer-name" {
 module "lambda-function-name" {
   for_each      = local.functions
   source        = "git@github.com:traveloka/terraform-aws-resource-naming.git?ref=v0.22.0"
-  name_prefix   = "${var.service_domain}-${var.service_name}-${var.service_environment}-${each.value}"
+  name_prefix   = "${local.resource_prefix_name}-${each.value}"
   resource_type = "lambda_function"
 }
 
@@ -44,7 +47,7 @@ module "lambda-function-name" {
 module "dynamodb-table-name" {
   for_each      = { for table in var.dynamodb_table_list : table.name => table }
   source        = "git@github.com:traveloka/terraform-aws-resource-naming.git?ref=v0.22.0"
-  name_prefix   = "${var.service_domain}-${var.service_name}-${var.service_environment}-${each.value.name}"
+  name_prefix   = "${local.resource_prefix_name}-${each.value.name}"
   resource_type = "dynamodb_table"
 }
 
@@ -193,6 +196,7 @@ resource "aws_lambda_function" "lambda-function" {
       "SERVICE_DOMAIN"      = var.service_domain
       "SERVICE_NAME"        = var.service_name
       "SERVICE_ENVIRONMENT" = var.service_environment
+      "FUNCTION_NAME"       = each.value
     }
   }
 
