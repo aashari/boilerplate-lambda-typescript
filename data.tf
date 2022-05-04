@@ -37,7 +37,7 @@ data "aws_iam_policy_document" "function-policy" {
       "ssm:GetParametersByPath",
     ]
     resources = [
-      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.id}:parameter/service/${local.service_domain}/${local.service_name}/${local.service_environment}/*",
+      "arn:aws:ssm:${data.aws_region.current.id}:${data.aws_caller_identity.current.id}:parameter/service/${var.service_domain}/${var.service_name}/${var.service_environment}/*",
     ]
   }
 
@@ -53,7 +53,7 @@ data "aws_iam_policy_document" "function-policy" {
       "dynamodb:DescribeTable"
     ]
     resources = [
-      for table in local.dynamodb_table_list : "arn:aws:dynamodb:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:table/${module.dynamodb-table-name[table.name].name}"
+      for table in var.dynamodb_table_list : "arn:aws:dynamodb:${data.aws_region.current.id}:${data.aws_caller_identity.current.account_id}:table/${module.dynamodb-table-name[table.name].name}"
     ]
   }
 

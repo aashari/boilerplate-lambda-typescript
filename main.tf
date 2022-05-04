@@ -10,8 +10,42 @@ locals {
   ])
 
   # temporary path prefix to store the generated files
-  temporary_build_prefix = "/tmp/${data.aws_caller_identity.current.id}/${data.aws_region.current.id}/${local.service_name}"
+  temporary_build_prefix = "/tmp/${data.aws_caller_identity.current.id}/${data.aws_region.current.id}/${var.service_name}"
 
+  # define the default tags for the resources
+  default_tags = merge({
+    "Name" : "${var.service_domain}-${var.service_name}-${var.service_environment}",
+    "Environment" : "${var.service_environment}",
+    "Service" : "${var.service_name}",
+    "ServiceName" : "${var.service_name}",
+    "ServiceDomain" : "${var.service_domain}",
+    "ServiceVersion" : "${var.service_version}",
+  }, var.default_tags)
+
+}
+
+# naming section to standardize the naming of the resources
+# naming for Lambda Layer
+module "lambda-layer-name" {
+  source        = "git@github.com:traveloka/terraform-aws-resource-naming.git?ref=v0.22.0"
+  name_prefix   = "${var.service_domain}-${var.service_name}-${var.service_environment}-layer"
+  resource_type = "lambda_function"
+}
+
+# naming for Lambda Function
+module "lambda-function-name" {
+  for_each      = local.functions
+  source        = "git@github.com:traveloka/terraform-aws-resource-naming.git?ref=v0.22.0"
+  name_prefix   = "${var.service_domain}-${var.service_name}-${var.service_environment}-${each.value}"
+  resource_type = "lambda_function"
+}
+
+# naming for DynamoDB Table
+module "dynamodb-table-name" {
+  for_each      = { for table in var.dynamodb_table_list : table.name => table }
+  source        = "git@github.com:traveloka/terraform-aws-resource-naming.git?ref=v0.22.0"
+  name_prefix   = "${var.service_domain}-${var.service_name}-${var.service_environment}-${each.value.name}"
+  resource_type = "dynamodb_table"
 }
 
 # build a TypeScript model based on DynamoDB table list
@@ -19,7 +53,7 @@ locals {
 # and store it in the sources/src/models directory with format of <table_name>.module.ts
 # the TypeScript model will only be generated if the model file does not exist
 resource "null_resource" "typescript-source-model-builder" {
-  for_each   = { for table in local.dynamodb_table_list : table.name => table }
+  for_each   = { for table in var.dynamodb_table_list : table.name => table }
   depends_on = [null_resource.lambda-layer-source-builder]
   provisioner "local-exec" {
     working_dir = "${path.module}/sources"
@@ -56,8 +90,8 @@ resource "null_resource" "lambda-function-source-builder" {
   }
   triggers = {
     lambda-function-md5 = data.archive_file.typescript-source.output_md5
-    service_domain      = local.service_domain
-    service_name        = local.service_name
+    service_domain      = var.service_domain
+    service_name        = var.service_name
     file_dist           = fileexists("${path.module}/sources/dist/index.js") ? "${path.module}/sources/dist/index.js" : timestamp()
   }
 }
@@ -84,8 +118,8 @@ resource "null_resource" "lambda-layer-source-builder" {
   triggers = {
     dependencies-file-md5 = filemd5("${path.module}/sources/package.json")
     dependencies-lock-md5 = filemd5("${path.module}/sources/package-lock.json")
-    service_domain        = local.service_domain
-    service_name          = local.service_name
+    service_domain        = var.service_domain
+    service_name          = var.service_name
     file_node_modules     = fileexists("${path.module}/sources/node_modules/package-lock.json") ? "${path.module}/sources/node_modules/package-lock.json" : timestamp()
   }
 }
@@ -93,7 +127,7 @@ resource "null_resource" "lambda-layer-source-builder" {
 # create kms key for the service
 # this kms key will be used as a service encryption key
 resource "aws_kms_key" "service-key" {
-  description         = "${local.service_domain}-${local.service_name}-${local.service_environment}-key"
+  description         = "${var.service_domain}-${var.service_name}-${var.service_environment}-key"
   key_usage           = "ENCRYPT_DECRYPT"
   enable_key_rotation = true
   tags                = local.default_tags
@@ -101,14 +135,14 @@ resource "aws_kms_key" "service-key" {
 
 # create alias for kms key
 resource "aws_kms_alias" "service-alias" {
-  name          = "alias/service/${local.service_domain}/${local.service_name}/${local.service_environment}"
+  name          = "alias/service/${var.service_domain}/${var.service_name}/${var.service_environment}"
   target_key_id = aws_kms_key.service-key.key_id
 }
 
 # create Lambda Layer for the service
 resource "aws_lambda_layer_version" "lambda-layer" {
   filename            = data.archive_file.lambda-layer-source.output_path
-  description         = "${local.service_name} ${local.service_environment} layer"
+  description         = "${var.service_name} ${var.service_environment} layer"
   layer_name          = module.lambda-layer-name.name
   compatible_runtimes = [local.lambda_runtime]
 }
@@ -147,8 +181,8 @@ resource "aws_lambda_function" "lambda-function" {
   handler     = "index.handler"
   runtime     = local.lambda_runtime
   role        = aws_iam_role.lambda-function-role[each.value].arn
-  timeout     = try(local.lambda_function_custom_configuration[each.value].lambda_timeout, 60)
-  memory_size = try(local.lambda_function_custom_configuration[each.value].lambda_memory_size, 128)
+  timeout     = try(var.lambda_function_custom_configuration[each.value].lambda_timeout, 60)
+  memory_size = try(var.lambda_function_custom_configuration[each.value].lambda_memory_size, 128)
 
   source_code_hash = data.archive_file.lambda-function-source.output_sha
   layers           = [aws_lambda_layer_version.lambda-layer.arn]
@@ -156,23 +190,23 @@ resource "aws_lambda_function" "lambda-function" {
 
   environment {
     variables = {
-      "SERVICE_DOMAIN"      = local.service_domain
-      "SERVICE_NAME"        = local.service_name
-      "SERVICE_ENVIRONMENT" = local.service_environment
+      "SERVICE_DOMAIN"      = var.service_domain
+      "SERVICE_NAME"        = var.service_name
+      "SERVICE_ENVIRONMENT" = var.service_environment
     }
   }
 
 }
 
-# create DynamoDB table for the service based on the local.dynamodb_table_list value 
+# create DynamoDB table for the service based on the var.dynamodb_table_list value 
 resource "aws_dynamodb_table" "dynamodb-table" {
 
-  for_each = { for table in local.dynamodb_table_list : table.name => table }
+  for_each = { for table in var.dynamodb_table_list : table.name => table }
 
   name         = module.dynamodb-table-name[each.value.name].name
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = each.value.key
-  range_key    = try(each.value.range_key, "") != "" ? each.value.range_key : ""
+  range_key    = each.value.range_key != null ? each.value.range_key : null
   tags         = local.default_tags
 
   point_in_time_recovery {
@@ -190,7 +224,7 @@ resource "aws_dynamodb_table" "dynamodb-table" {
   }
 
   dynamic "attribute" {
-    for_each = toset(try(each.value.range_key, "") != "" ? [each.value.range_key] : [])
+    for_each = each.value.range_key != null ? [each.value.range_key] : []
     content {
       name = each.value.range_key
       type = "S"
@@ -199,23 +233,23 @@ resource "aws_dynamodb_table" "dynamodb-table" {
 
 }
 
-# create SSM Parameter Store to store DynamoDB table name based on the local.dynamodb_table_list value
+# create SSM Parameter Store to store DynamoDB table name based on the var.dynamodb_table_list value
 # this parameter will be used to load the environment variables to get the actual DynamoDB table name
 # the environment variables will be create with this format DYNAMODB_TABLE_<table_name>
 resource "aws_ssm_parameter" "ssm-parameter-dynamodb-table" {
-  for_each = { for table in local.dynamodb_table_list : table.name => table }
-  name     = "/service/${local.service_domain}/${local.service_name}/${local.service_environment}/dynamodb-table-${each.value.name}"
+  for_each = { for table in var.dynamodb_table_list : table.name => table }
+  name     = "/service/${var.service_domain}/${var.service_name}/${var.service_environment}/dynamodb-table-${each.value.name}"
   key_id   = aws_kms_alias.service-alias.id
   type     = "SecureString"
   value    = module.dynamodb-table-name[each.value.name].name
   tags     = local.default_tags
 }
 
-# create SSM Parameter Store based on the local.ssm_parameter_list value
+# create SSM Parameter Store based on the var.ssm_parameter_list value
 # this parameter will be used to load the environment variables to get the actual SSM parameter value
 resource "aws_ssm_parameter" "ssm-parameter-custom" {
-  for_each = toset(local.parameter_store_list)
-  name     = "/service/${local.service_domain}/${local.service_name}/${local.service_environment}/${each.value}"
+  for_each = toset(var.parameter_store_list)
+  name     = "/service/${var.service_domain}/${var.service_name}/${var.service_environment}/${each.value}"
   key_id   = aws_kms_alias.service-alias.id
   type     = "SecureString"
   value    = "placeholder"
@@ -229,10 +263,10 @@ resource "aws_ssm_parameter" "ssm-parameter-custom" {
 # this parameter will be used to load the environment variables to get the actual service version
 # the environment variables will be create with this format SERVICE_VERSION
 resource "aws_ssm_parameter" "ssm-parameter-service-version" {
-  name   = "/service/${local.service_domain}/${local.service_name}/${local.service_environment}/service-version"
+  name   = "/service/${var.service_domain}/${var.service_name}/${var.service_environment}/service-version"
   key_id = aws_kms_alias.service-alias.id
   type   = "String"
-  value  = local.service_version
+  value  = var.service_version
   tags   = local.default_tags
 }
 
@@ -247,7 +281,7 @@ resource "aws_iam_role_policy" "function-policy" {
 # create the Cloudwatch Event Rule for the Lambda Function with schedule_expression attribute
 resource "aws_cloudwatch_event_rule" "lambda-function-trigger-schedule" {
   for_each = {
-    for name, configuration in local.lambda_function_custom_configuration : name => configuration
+    for name, configuration in var.lambda_function_custom_configuration : name => configuration
     if configuration.schedule_expression != ""
   }
   description         = "Lambda Function trigger schedule for ${each.key}"
