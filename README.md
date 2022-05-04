@@ -16,268 +16,86 @@ This is a boilerplate to help you initiate AWS Lambda project using Typescript, 
 - Lambda layer to store the dependencies of the project
 - Lambda scheduler to schedule the function invocation
 
+## Configuration
+
+There is file `variables.tf` contains the configuration for the project, here is the detailed configuration information:
+
+| name                                 | description                                                 | is required | example                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------ | ----------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| service_domain                       | The 1st level of logical grouping of the service            | yes         | api, web, db, etc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| service_name                         | The 2nd level of logical grouping of the service            | yes         | my-api, my-web, my-db, etc.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| service_environment                  | The 3rd level of logical grouping of the service            | yes         | dev, test, prod, etc.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| parameter_store_list                 | The list of parameter store keys to be used for the service | no          | <pre>[<br />&nbsp;&nbsp;"datadog-api-key",<br />&nbsp;&nbsp;"datadog-app-key",<br />&nbsp;&nbsp;"sentry-dsn",<br />&nbsp;&nbsp;"sentry-environment"<br />]</pre>                                                                                                                                                                                                                                                                                                                     |
+| service_version                      | The version of the service                                  | no          | <pre>'v1.0.0'</pre>                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| dynamodb_table_list                  | The list of dynamodb tables to be used for the service      | no          | <pre>[<br />&nbsp;&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;"name": "booking",<br />&nbsp;&nbsp;&nbsp;&nbsp;"key": "id"<br />&nbsp;&nbsp;},<br />&nbsp;&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;"name": "flight",<br />&nbsp;&nbsp;&nbsp;&nbsp;"key": "id"<br />&nbsp;&nbsp;},<br />&nbsp;&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;"name": "transaction",<br />&nbsp;&nbsp;&nbsp;&nbsp;"key": "booking_id",<br />&nbsp;&nbsp;&nbsp;&nbsp;"range_key": "flight_id"<br />&nbsp;&nbsp;}<br />]</pre> |
+| lambda_function_custom_configuration | The custom configuration for the Lambda Function            | no          | <pre>{<br />&nbsp;&nbsp;"booking-create": {<br />&nbsp;&nbsp;&nbsp;&nbsp;"lambda_memory_size": 1024,<br />&nbsp;&nbsp;&nbsp;&nbsp;"lambda_timeout": 300<br />&nbsp;&nbsp;}<br />}</pre>                                                                                                                                                                                                                                                                                              |
+| default_tags                         | The default tags for the service                            | no          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+
+### DynamoDB Configuration
+
+| name      | description                           | is required | example   |
+| --------- | ------------------------------------- | ----------- | --------- |
+| name      | The name of the DynamoDB table        | yes         | booking   |
+| key       | The primary key of the DynamoDB table | yes         | id        |
+| range_key | The range key of the DynamoDB table   | no          | flight_id |
+
+### Lambda Configuration
+
+| name                | description                                    | is required | example     |
+| ------------------- | ---------------------------------------------- | ----------- | ----------- |
+| lambda_memory_size  | The memory size of the Lambda Function         | no          | 1024        |
+| lambda_timeout      | The timeout of the Lambda Function             | no          | 300         |
+| schedule_expression | The schedule expression of the Lambda Function | no          | rate(1 day) |
+
+## Context
+
 ### Project Structures
 
 ```
 .
 ├── sources
-│   ├── dist
-│   ├── node_modules
-│   ├── package-lock.json
-│   ├── package.json
-│   ├── src
-│   │   ├── decorators
-│   │   │   └── statistic.decorator.ts
-│   │   ├── functions
-│   │   │   ├── booking-create.function.ts
-│   │   │   ├── booking-search.function.ts
-│   │   │   └── flight-search.function.ts
-│   │   ├── helpers
-│   │   │   └── parameter-store.helper.ts
-│   │   ├── index.ts
-│   │   ├── libraries
-│   │   │   └── datadog.library.ts
-│   │   └── models
-│   │       ├── booking.model.ts
-│   │       └── flight.model.ts
-│   └── tsconfig.json
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── src
+│   │   ├── decorators
+│   │   │   └── statistic.decorator.ts
+│   │   ├── functions
+│   │   │   ├── booking-create.function.ts
+│   │   │   ├── booking-search.function.ts
+│   │   │   └── flight-search.function.ts
+│   │   ├── helpers
+│   │   │   ├── chunk.helper.ts
+│   │   │   └── parameter-store.helper.ts
+│   │   ├── index.ts
+│   │   ├── libraries
+│   │   │   ├── datadog.library.ts
+│   │   │   └── dynamodb.library.ts
+│   │   └── models
+│   │       ├── booking.model.ts
+│   │       ├── flight.model.ts
+│   │       ├── model.ts
+│   │       └── transaction.model.ts
+│   └── tsconfig.json
 ├── README.md
 ├── data.tf
-├── locals.tf
 ├── main.tf
 ├── providers.tf
+├── terraform.tfvars.example
+└── variables.tf
 ```
-
-#### Context
 
 While doing a `terraform apply` command, theese are the things that will be created:
 
 - AWS Lambda Function, in the `main.tf` there's a logic on creating AWS Lambda function based on files with format `*.function.ts` under `sources/src/functions` directory, so the number of AWS Lambda function created is based on `*.function.ts` files
-- AWS System Manager Parameter Store, in the `main.tf` there's a logic on creating AWS Parameter Store with prefix set on `parameter_store_path` under `locals.tf` based on:
-  - **parameter_store_list** attributes under `locals.tf` file
-  - **dynamodb_table_list** attributes under `locals.tf` file which will create a Parameter Store to store the table names of DynamoDB with format `dynamodb-table-{table_name}`
-  - **service_version** attributes under `locals.tf` file which will create a Parameter Store to store the version of the service
+- AWS System Manager Parameter Store, in the `main.tf` there's a logic on creating AWS Parameter Store with prefix set on `parameter_store_path` under `variables.tf` based on:
+  - **parameter_store_list** attributes under `variables.tf` file
+  - **dynamodb_table_list** attributes under `variables.tf` file which will create a Parameter Store to store the table names of DynamoDB with format `dynamodb-table-{table_name}`
+  - **service_version** attributes under `variables.tf` file which will create a Parameter Store to store the version of the service
 
 Another context related to the Typescript source code:
 
-- `sources/src/helpers` is the collection of functional helpers such as `populateEnvironmentVariables()` you can freely add another functional helpers under this directory
-- `sources/src/libraries` is the collection of class helpers such as `DatadogLibrary` which contains all Datadog functionality such as `publishMetrics` and `publishEvents`, or another example `DynamoDBLibrary` which contains `putItem` and `getItem`
-- `sources/src/decorators` is the collection of Typescript decorators, the initial example is `@statistic` decorator which have the functionality to log the execution duration for the method that uses the decorators, the example also include the additional process to stream the statistic metrics into Datadog
-- `sources/src/index.ts` is a bootstraper file which contains default `exports.handlers` function, which is the default function that will be called by AWS Lambda Function, this file contains logic to create the `sources/src/functions/*.function.ts` instance and create object then call the `handler` method
-- `sources/src/models` is the collection of Typescript models, the initial example is `Booking` which is the model for DynamoDB table `booking` which automatically created by terraform code
-
-## Configuration
-
-There is file `locals.tf` contains the configuration for the project, here is the detailed configuration information:
-
-| name                                 | description                                                                          | is required | example                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------------ | ------------------------------------------------------------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| service_domain                       | The 1st level of logical grouping for the service                                    | yes         | `flight`                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| service_name                         | The 2nd level of logical grouping for the service                                    | yes         | `booking`                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| service_environment                  | The 3rd level of logical grouping for the service                                    | yes         | `dev`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| parameter_store_path                 | The path/prefix of the parameter store                                               | no          | `/services/flight/booking/dev/`                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| parameter_store_list                 | The list of parameters that will be retrieved from the parameter store               | no          | <pre>[<br />&nbsp;&nbsp;"datadog-api-key",<br />&nbsp;&nbsp;"datadog-app-key",<br />&nbsp;&nbsp;"sentry-dsn",<br />&nbsp;&nbsp;"sentry-environment"<br />]</pre>                                                                                                                                                                                                                                                                                                                     |
-| dynamodb_table_list                  | The list of `DynamoDB Configuration` tables that will be used by the Lambda Function | no          | <pre>[<br />&nbsp;&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;"name": "booking",<br />&nbsp;&nbsp;&nbsp;&nbsp;"key": "id"<br />&nbsp;&nbsp;},<br />&nbsp;&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;"name": "flight",<br />&nbsp;&nbsp;&nbsp;&nbsp;"key": "id"<br />&nbsp;&nbsp;},<br />&nbsp;&nbsp;{<br />&nbsp;&nbsp;&nbsp;&nbsp;"name": "transaction",<br />&nbsp;&nbsp;&nbsp;&nbsp;"key": "booking_id",<br />&nbsp;&nbsp;&nbsp;&nbsp;"range_key": "flight_id"<br />&nbsp;&nbsp;}<br />]</pre> |
-| lambda_function_custom_configuration | The list of `Lambda Configuration` that will be used by the Lambda Function          | no          | <pre>{<br />&nbsp;&nbsp;"booking-create": {<br />&nbsp;&nbsp;&nbsp;&nbsp;"lambda_memory_size": 1024,<br />&nbsp;&nbsp;&nbsp;&nbsp;"lambda_timeout": 300<br />&nbsp;&nbsp;}<br />}</pre>                                                                                                                                                                                                                                                                                              |
-
-### DynamoDB Configuration
-
-| name      | description                           | is required | example     |
-| --------- | ------------------------------------- | ----------- | ----------- |
-| name      | The name of the DynamoDB table        | yes         | `booking`   |
-| key       | The primary key of the DynamoDB table | yes         | `id`        |
-| range_key | The range key of the DynamoDB table   | no          | `flight_id` |
-
-### Lambda Configuration
-
-| name                | description                                    | is required | example       |
-| ------------------- | ---------------------------------------------- | ----------- | ------------- |
-| lambda_memory_size  | The memory size of the Lambda Function         | no          | `1024`        |
-| lambda_timeout      | The timeout of the Lambda Function             | no          | `300`         |
-| schedule_expression | The schedule expression of the Lambda Function | no          | `rate(1 day)` |
-
-## Example Configuration
-
-```
-locals {
-
-  service_domain       = "flight"
-  service_name         = "booking"
-  service_environment  = "dev"
-  parameter_store_path = "tvlk-secret/${local.service_name}/${local.service_domain}"
-
-  parameter_store_list = [
-    "dd-api-key",
-    "dd-app-key",
-  ]
-
-  dynamodb_table_list = [
-    {
-      name : "booking",
-      key : "id",
-    },
-    {
-      name : "flight",
-      key : "id",
-    },
-    {
-      name : "transaction",
-      key : "booking_id",
-      range_key : "flight_id",
-    }
-  ]
-
-  lambda_function_custom_configuration = {
-    booking-create : {
-      lambda_memory_size : "128",
-      lambda_timeout : "60"
-      schedule_expression : "rate(1 minute)"
-    }
-  }
-
-}
-```
-
-By above configuration, the boilerplate will automatically creates:
-
-| resource type   | resource name                           | environment variable name  | description                                                 |
-| --------------- | --------------------------------------- | -------------------------- | ----------------------------------------------------------- |
-| Lambda Function | booking-create                          |                            | The Lambda Function for `booking-create.function.ts`        |
-| Lambda Function | booking-search                          |                            | The Lambda Function for `booking-search.function.ts`        |
-| Lambda Function | flight-search                           |                            | The Lambda Function for `flight-search.function.ts`         |
-| DynamoDB Table  | booking                                 | DYNAMODB_TABLE_BOOKING     | With the primary key `id`                                   |
-| DynamoDB Table  | flight                                  | DYNAMODB_TABLE_FLIGHT      | With the primary key `id`                                   |
-| DynamoDB Table  | transaction                             | DYNAMODB_TABLE_TRANSACTION | With the primary key `booking_id` and range key `flight_id` |
-| Parameter Store | /services/flight/booking/dev/dd-api-key | DD_API_KEY                 |                                                             |
-| Parameter Store | /services/flight/booking/dev/dd-app-key | DD_APP_KEY                 |                                                             |
-
-For Lambda Custom Configuration:
-
-| lambda resource name | memory size | timeout | schedule expression |
-| -------------------- | ----------- | ------- | ------------------- |
-| booking-create       | 128         | 60      | rate(1 minute)      |
-
-## Typescript Code
-
-### Decorator
-
-There is an initial example of `@statistic` decorator which have the functionality to log the execution duration for the method that uses the decorators, the example also include the additional process to stream the statistic metrics into Datadog, the example of how to use the decorator is as follows:
-
-```
-@statistic() // true if you want to stream the statistic metrics into Datadog
-public async handler(event: any, context: any, callback: any) {
-    callback(null, {
-        statusCode: 200,
-        body: JSON.stringify({
-            message: 'Hello World!',
-        }),
-    });
-}
-```
-
-### Model
-
-By default, the boilerplate will automatically created models based on DynamoDB table defined in `locals.tf`, for example, if there's DynamoDB table `booking` and `flight` then there will be two models created:
-
-```
-export class BookingModel extends Model {
-  public id: string;
-}
-
-export class FlightModel extends Model {
-  public id: string;
-}
-
-export class TransactionModel extends Model {
-  public booking_id: string;
-  public flight_id: string;
-}
-```
-
-You can freely add your own attribute/methods on your auto generated models (it won't be overridden by the boilerplate), for example:
-
-```
-export class BookingModel extends Model {
-  public id: string;
-  // your custom attribute here
-  public name: string;
-  public flight_id: string;
-}
-```
-
-All of aboves models derived from `Model` class, which contains the following methods and attributes:
-
-| type          | name       | data type | description                           |
-| ------------- | ---------- | --------- | ------------------------------------- |
-| attribute     | created_at | number    | The timestamp of the record created   |
-| attribute     | updated_at | number    | The timestamp of the record updated   |
-| method        | save       | boolean   | Save the record to DynamoDB table     |
-| method        | delete     | boolean   | Delete the record from DynamoDB table |
-| static method | get        | Model     | Get the record from DynamoDB table    |
-| static method | put        | boolean   | Put the record to DynamoDB table      |
-| static method | scan       | Model[]   | Scan the records from DynamoDB table  |
-| static method | delete     | boolean   | Delete the record from DynamoDB table |
-
-Here is the example of usage:
-
-#### To retrieve the booking data by id
-
-```
-let myBooking = BookingModel.get({ id: "123" });
-console.log(myBooking);
-```
-
-#### To store the booking data
-
-```
-let myBooking = new BookingModel();
-myBooking.id = "123";
-myBooking.save();
-```
-
-#### To store the booking data using static method
-
-```
-let myBooking = new BookingModel();
-myBooking.id = "123";
-await BookingModel.put(myBooking);
-```
-
-#### To delete the booking data
-
-```
-let myBooking = BookingModel.get({ id: "123" });
-myBooking.delete();
-```
-
-#### To delete the booking data using static method
-
-```
-await BookingModel.delete({ id: "123" });
-```
-
-#### To scan all the booking data
-
-```
-let myBookings = BookingModel.scan();
-console.log(myBookings);
-```
-
-#### To scan the booking data with filter
-
-```
-let myBookings = BookingModel.scan({ flight_id: "123" });
-console.log(myBookings);
-```
-
-## Minimum Requirements
-
-- [nodenv 1.4.0](https://github.com/nodenv/nodenv)
-- [tfenv 2.2.3](https://github.com/tfutils/tfenv)
-
-## How to run
-
-```
-terraform init
-terraform apply
-```
+- **sources/src/helpers** is the collection of functional helpers such as `populateEnvironmentVariables()` you can freely add another functional helpers under this directory
+- **sources/src/libraries** is the collection of class helpers such as `DatadogLibrary` which contains all Datadog functionality such as `publishMetrics` and `publishEvents`, or another example `DynamoDBLibrary` which contains `putItem` and `getItem`
+- **sources/src/decorators** is the collection of Typescript decorators, the initial example is `@statistic` decorator which have the functionality to log the execution duration for the method that uses the decorators, the example also include the additional process to stream the statistic metrics into Datadog
+- **sources/src/index.ts** is a bootstraper file which contains default `exports.handlers` function, which is the default function that will be called by AWS Lambda Function, this file contains logic to create the `sources/src/functions/*.function.ts` instance and create object then call the `handler` method
+- **sources/src/models** is the collection of Typescript models, the initial example is `Booking` which is the model for DynamoDB table `booking` which automatically created by terraform code
