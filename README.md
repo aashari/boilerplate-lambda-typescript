@@ -144,3 +144,9 @@ Another context related to the Typescript source code:
 | <a name="output_lambda-layer"></a> [lambda-layer](#output\_lambda-layer) | Lambda Layer created |
 | <a name="output_ssm-parameter-list"></a> [ssm-parameter-list](#output\_ssm-parameter-list) | List of SSM Parameters created |
 <!-- END_TF_DOCS -->
+
+## How to Setup
+To setup the example you can follow the following steps:
+* Copy the `terraform.tfvars.example` file to `terraform.tfvars`
+* Run `terraform init`
+* Run `terraform apply`
