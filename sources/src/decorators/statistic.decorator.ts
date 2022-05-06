@@ -1,3 +1,4 @@
+import { inspect } from "util";
 import { DatadogLibrary } from "../libraries/datadog.library";
 
 /**
@@ -76,7 +77,7 @@ function _statistic(target: any, propertyKey: string, descriptor: PropertyDescri
                 `Class name: ${className}`,
                 `Method name: ${propertyKey}`,
                 `Error: ${error}`,
-                `Error Details: ${JSON.stringify(error)}`
+                `Error Details: ${inspect(error)}`
             ].join(`\n`), "error", [...datadogTags, `status:failure`]);
 
             // throw the original function error

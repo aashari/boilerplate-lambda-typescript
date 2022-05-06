@@ -1,3 +1,4 @@
+import { inspect } from "util";
 import { populateEnvironmentVariables } from "./helpers/parameter-store.helper";
 import { DynamoDBLibrary } from "./libraries/dynamodb.library";
 
@@ -18,8 +19,8 @@ async function startLambda(event: any, context: any, callback: any) {
     const start = new Date().getTime();
 
     // parse the naming based on function name component
-    let functionServiceName = process.env.SERVICE_NAME ?? ``;
-    let functionName = process.env.FUNCTION_NAME ?? ``;
+    let functionServiceName = process.env.SERVICE_NAME ?? `-`;
+    let functionName = process.env.FUNCTION_NAME ?? `-`;
 
     // --------------------------------------------------
     // load the helpers here
@@ -79,11 +80,16 @@ async function startLambda(event: any, context: any, callback: any) {
         // DatadogLibrary.queueEvent(`Lambda ${functionName} execution error`, [
         //     `Function Name: ${functionName}`,
         //     `Error: ${errorResponse}`,
-        //     `Error Details: ${JSON.stringify(errorResponse)}`
+        //     `Error Details: ${inspect(errorResponse)}`
         // ].join(`\n`), `error`, datadogTags);
 
         // throw the original error
-        callback(errorResponse);
+        callback(null, {
+            statusCode: 500,
+            body: JSON.stringify({
+                error: errorResponse.message
+            })
+        });
 
     });
 }

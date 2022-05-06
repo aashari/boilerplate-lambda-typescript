@@ -15,10 +15,9 @@ export class DatadogLibrary {
     private eventWaitingHandle: NodeJS.Timeout | undefined;
 
     private defaultDatadogTags = [
-        `service:${process.env.FUNCTION_SERVICE_NAME}`,
+        `service:${process.env.SERVICE_NAME}`,
         `version:${process.env.SERVICE_VERSION}`,
         `function_name:${process.env.FUNCTION_NAME}`,
-        `function_unique_code:${process.env.FUNCTION_UNIQUE_CODE}`
     ];
 
     constructor() { }
@@ -60,7 +59,7 @@ export class DatadogLibrary {
 
         // add current metric to series
         this.datadogLibraryInstance.metricSeries.push({
-            metric: `${process.env.FUNCTION_SERVICE_NAME}.${metricName}`.toLowerCase(),
+            metric: `${process.env.SERVICE_NAME}.${metricName}`.toLowerCase(),
             points: [[Math.round((new Date().getTime() / 1000)), metricValue]],
             host: process.env?.AWS_LAMBDA_FUNCTION_NAME ?? "",
             type: type,

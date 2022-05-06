@@ -1,5 +1,6 @@
 import { AttributeValue, DescribeTableCommand, DynamoDBClient, ScanCommandInput, WriteRequest } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
+import { inspect } from 'util';
 import { statistic } from '../decorators/statistic.decorator';
 import { chunk } from '../helpers/chunk.helper';
 import { Model } from '../models/model';
@@ -63,7 +64,7 @@ export class DynamoDBLibrary {
             `Table Name: ${tableName}`,
             `Table Data: ${JSON.stringify(data)}`,
             `Error: ${errorResponse}`,
-            `Error Details: ${JSON.stringify(errorResponse)}`,
+            `Error Details: ${inspect(errorResponse)}`,
         ].join('\n'), "error", [`table:${tableName}`, `class:DynamoDBLibrary`, `method:${method}`]);
         
     }
